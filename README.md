@@ -33,4 +33,8 @@
 
  ## Notes
  - Login and forgot-password actions are mocked for UI/demo purposes.
+<<<<<<< Updated upstream
   
+=======
+  
+>>>>>>> Stashed changes
