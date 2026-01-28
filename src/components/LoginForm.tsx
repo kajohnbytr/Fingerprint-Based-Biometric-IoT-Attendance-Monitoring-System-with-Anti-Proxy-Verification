@@ -1,10 +1,32 @@
-import { useState } from 'react';
-import { Lock, Mail } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Lock, Mail, Shield, User } from 'lucide-react';
+import { roleLabels, type UserRole } from '../types/rbac';
 
-export function LoginForm({ onLogin, onForgot }: { onLogin?: () => void; onForgot?: () => void }) {
+export function LoginForm({
+  onLogin,
+  onForgot,
+  forcedRole,
+  showRoleSelector = true,
+  title = 'Portal Login',
+  subtitle = 'Enter your credentials and select a role',
+}: {
+  onLogin?: (role: UserRole) => void;
+  onForgot?: () => void;
+  forcedRole?: UserRole;
+  showRoleSelector?: boolean;
+  title?: string;
+  subtitle?: string;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<UserRole>(forcedRole ?? 'student');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (forcedRole) {
+      setRole(forcedRole);
+    }
+  }, [forcedRole]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,7 +37,7 @@ export function LoginForm({ onLogin, onForgot }: { onLogin?: () => void; onForgo
       console.log('Login attempted with:', { email, password });
       setIsLoading(false);
       if (onLogin) {
-        onLogin();
+        onLogin(role);
       }
     }, 1500);
   };
@@ -28,8 +50,8 @@ export function LoginForm({ onLogin, onForgot }: { onLogin?: () => void; onForgo
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-900 mb-4">
             <Lock className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-2xl font-semibold text-neutral-900 mb-2">Admin Login</h1>
-          <p className="text-neutral-500">Enter your credentials to continue</p>
+          <h1 className="text-2xl font-semibold text-neutral-900 mb-2">{title}</h1>
+          <p className="text-neutral-500">{subtitle}</p>
         </div>
 
         {/* Form */}
@@ -71,6 +93,41 @@ export function LoginForm({ onLogin, onForgot }: { onLogin?: () => void; onForgo
               />
             </div>
           </div>
+
+          {/* Role Selection */}
+          {showRoleSelector && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Role</label>
+              <div className="grid grid-cols-2 gap-2 rounded-lg bg-neutral-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setRole('student')}
+                  className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    role === 'student'
+                      ? 'bg-white text-neutral-900 shadow-sm'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                  aria-pressed={role === 'student'}
+                >
+                  <User className="h-4 w-4" />
+                  {roleLabels.student}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('admin')}
+                  className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    role === 'admin'
+                      ? 'bg-white text-neutral-900 shadow-sm'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                  aria-pressed={role === 'admin'}
+                >
+                  <Shield className="h-4 w-4" />
+                  {roleLabels.admin}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Remember Me & Forgot Password */}
           <div className="flex items-center justify-between">
@@ -115,7 +172,7 @@ export function LoginForm({ onLogin, onForgot }: { onLogin?: () => void; onForgo
         {/* Footer */}
         <div className="mt-6 pt-6 border-t border-neutral-200">
           <p className="text-center text-sm text-neutral-500">
-            Protected admin area. Unauthorized access is prohibited.
+            Authorized access only. Your role controls available features.
           </p>
         </div>
       </div>

@@ -1,9 +1,5 @@
-import { useState } from 'react';
+import React, { useState, type ComponentType } from 'react';
 import { 
-  LayoutDashboard, 
-  Users, 
-  Settings, 
-  FileText, 
   Shield, 
   LogOut, 
   Menu, 
@@ -11,7 +7,6 @@ import {
   Bell,
   Search
 } from 'lucide-react';
-import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { 
   DropdownMenu, 
@@ -21,24 +16,34 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from '../ui/dropdown-menu';
+import { roleLabels, type UserRole } from '../../types/rbac';
+
+type NavItem = {
+  id: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+};
 
 interface DashboardLayoutProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   currentView: string;
   onNavigate: (view: string) => void;
   onLogout: () => void;
+  role: UserRole;
+  navItems: NavItem[];
+  isMaintenanceMode: boolean;
 }
 
-export function DashboardLayout({ children, currentView, onNavigate, onLogout }: DashboardLayoutProps) {
+export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
+  children,
+  currentView,
+  onNavigate,
+  onLogout,
+  role,
+  navItems,
+  isMaintenanceMode,
+}: DashboardLayoutProps) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
-  const navItems = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'users', label: 'User Management', icon: Users },
-    { id: 'reports', label: 'Reports & Analytics', icon: FileText },
-    { id: 'settings', label: 'System Configuration', icon: Settings },
-    { id: 'logs', label: 'Audit Logs', icon: Shield },
-  ];
 
   return (
     <div className="min-h-screen bg-neutral-50 flex">
@@ -155,6 +160,11 @@ export function DashboardLayout({ children, currentView, onNavigate, onLogout }:
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900"
               />
             </div>
+            {isMaintenanceMode && (
+              <span className="hidden md:inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                Maintenance Mode Active
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -168,7 +178,7 @@ export function DashboardLayout({ children, currentView, onNavigate, onLogout }:
                 <button className="flex items-center gap-3 hover:bg-neutral-50 p-2 rounded-lg transition-colors outline-none">
                   <div className="text-right hidden md:block">
                     <p className="text-sm font-medium text-neutral-900">Admin User</p>
-                    <p className="text-xs text-neutral-500">Super Admin</p>
+                    <p className="text-xs text-neutral-500">{roleLabels[role]}</p>
                   </div>
                   <Avatar>
                     <AvatarImage src="https://github.com/shadcn.png" />
@@ -199,4 +209,4 @@ export function DashboardLayout({ children, currentView, onNavigate, onLogout }:
       </main>
     </div>
   );
-}
+};

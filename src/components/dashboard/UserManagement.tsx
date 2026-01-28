@@ -5,7 +5,7 @@ import {
   Filter, 
   MoreHorizontal, 
   Pencil, 
-  Trash2, 
+  Archive, 
   Shield, 
   User 
 } from 'lucide-react';
@@ -42,10 +42,10 @@ import { Label } from "../ui/label";
 // Mock Data
 const users = [
   { id: 1, name: 'Alice Johnson', email: 'alice@university.edu', role: 'Student', department: 'Computer Science', status: 'Active' },
-  { id: 2, name: 'Dr. Robert Smith', email: 'robert.smith@university.edu', role: 'Faculty', department: 'Physics', status: 'Active' },
-  { id: 3, name: 'Sarah Williams', email: 'sarah.w@university.edu', role: 'Admin', department: 'Administration', status: 'Active' },
+  { id: 2, name: 'Dr. Robert Smith', email: 'robert.smith@university.edu', role: 'Admin (Teacher)', department: 'Physics', status: 'Active' },
+  { id: 3, name: 'Sarah Williams', email: 'sarah.w@university.edu', role: 'Super Admin', department: 'Administration', status: 'Active' },
   { id: 4, name: 'Michael Brown', email: 'm.brown@university.edu', role: 'Student', department: 'Engineering', status: 'Inactive' },
-  { id: 5, name: 'Emily Davis', email: 'emily.d@university.edu', role: 'Faculty', department: 'Mathematics', status: 'Active' },
+  { id: 5, name: 'Emily Davis', email: 'emily.d@university.edu', role: 'Admin (Teacher)', department: 'Mathematics', status: 'Active' },
 ];
 
 export function UserManagement() {
@@ -103,8 +103,8 @@ export function UserManagement() {
                   </Label>
                   <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
                     <option value="student">Student</option>
-                    <option value="faculty">Faculty</option>
-                    <option value="admin">Admin</option>
+                    <option value="admin">Admin (Teacher)</option>
+                    <option value="super_admin">Super Admin (Developer)</option>
                   </select>
                 </div>
               </div>
@@ -159,7 +159,11 @@ export function UserManagement() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    {user.role === 'Admin' ? <Shield className="w-4 h-4 text-purple-600" /> : <User className="w-4 h-4 text-blue-600" />}
+                    {user.role === 'Super Admin' ? (
+                      <Shield className="w-4 h-4 text-purple-600" />
+                    ) : (
+                      <User className="w-4 h-4 text-blue-600" />
+                    )}
                     <span className="text-sm">{user.role}</span>
                   </div>
                 </TableCell>
@@ -181,8 +185,8 @@ export function UserManagement() {
                       <DropdownMenuItem className="gap-2">
                         <Pencil className="w-4 h-4" /> Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-red-600 gap-2">
-                        <Trash2 className="w-4 h-4" /> Delete
+                      <DropdownMenuItem className="text-amber-600 gap-2">
+                        <Archive className="w-4 h-4" /> Archive
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

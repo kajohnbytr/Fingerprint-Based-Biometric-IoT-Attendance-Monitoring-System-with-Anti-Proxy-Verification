@@ -1,10 +1,6 @@
-import { useState } from 'react';
 import { 
-  FileText, 
   Download, 
   Filter, 
-  Calendar,
-  ChevronDown
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -17,6 +13,7 @@ import {
   TableRow 
 } from '../ui/table';
 import { Badge } from '../ui/badge';
+import type { UserRole } from '../../types/rbac';
 
 const reportData = [
   { id: 1, date: '2023-10-25', class: 'Year 1 - Block 3', totalStudents: 45, present: 42, absent: 3, late: 1, status: 'Good' },
@@ -76,13 +73,19 @@ function downloadCsv(rows: typeof reportData) {
   URL.revokeObjectURL(url);
 }
 
-export function Reports() {
+export function Reports({ role }: { role: UserRole }) {
+  const title = role === 'admin' ? 'Class Reports' : 'Reports & Analytics';
+  const description =
+    role === 'admin'
+      ? 'Summary reports for the classes you handle.'
+      : 'Generate and export attendance reports.';
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-neutral-900">Reports & Analytics</h1>
-        <p className="text-neutral-500">Generate and export attendance reports.</p>
+        <h1 className="text-2xl font-bold text-neutral-900">{title}</h1>
+        <p className="text-neutral-500">{description}</p>
       </div>
 
       {/* Filters & Actions */}
@@ -112,13 +115,15 @@ export function Reports() {
             <Filter className="w-4 h-4" />
             More Filters
           </Button>
-          <Button
-            className="bg-neutral-900 hover:bg-neutral-800 gap-2 flex-1 md:flex-none"
-            onClick={() => downloadCsv(reportData)}
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </Button>
+          {role !== 'student' && (
+            <Button
+              className="bg-neutral-900 hover:bg-neutral-800 gap-2 flex-1 md:flex-none"
+              onClick={() => downloadCsv(reportData)}
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </Button>
+          )}
         </div>
       </div>
 

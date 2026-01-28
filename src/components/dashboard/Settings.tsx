@@ -1,10 +1,4 @@
-import { 
-  Save, 
-  Bell, 
-  Shield, 
-  Palette, 
-  Globe 
-} from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -24,7 +18,15 @@ import {
   CardTitle 
 } from '../ui/card';
 
-export function Settings() {
+export function Settings({
+  canManageMaintenance,
+  isMaintenanceMode,
+  onToggleMaintenance,
+}: {
+  canManageMaintenance: boolean;
+  isMaintenanceMode: boolean;
+  onToggleMaintenance: (value: boolean) => void;
+}) {
   return (
     <div className="space-y-6">
       <div>
@@ -78,6 +80,31 @@ export function Settings() {
                 <Button className="ml-auto">Save Changes</Button>
               </CardFooter>
             </Card>
+
+            {canManageMaintenance && (
+              <Card className="mt-6 border-amber-200">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    Maintenance Mode
+                  </CardTitle>
+                  <CardDescription>
+                    Temporarily disable access for students and teachers.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-neutral-900">
+                      {isMaintenanceMode ? 'Active' : 'Inactive'}
+                    </p>
+                    <p className="text-sm text-neutral-500">
+                      Only super admins can access the system.
+                    </p>
+                  </div>
+                  <Switch checked={isMaintenanceMode} onCheckedChange={onToggleMaintenance} />
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Attendance Settings */}
