@@ -7,8 +7,8 @@ export function LoginForm({
   onForgot,
   forcedRole,
   showRoleSelector = true,
-  title = 'Portal Login',
-  subtitle = 'Enter your credentials and select a role',
+  title = 'Welcome Back',
+  subtitle = 'Sign in to access your dashboard',
 }: {
   onLogin?: (role: UserRole) => void;
   onForgot?: () => void;
@@ -31,10 +31,9 @@ export function LoginForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Mock login simulation
+
     setTimeout(() => {
-      console.log('Login attempted with:', { email, password });
+      console.log('Login attempted with:', { email, password, role });
       setIsLoading(false);
       if (onLogin) {
         onLogin(role);
@@ -42,23 +41,51 @@ export function LoginForm({
     }, 1500);
   };
 
+  const roles = [
+    { key: 'student', label: 'Student', icon: <User className="h-5 w-5 mb-1" /> },
+    { key: 'admin', label: 'Admin', icon: <Shield className="h-5 w-5 mb-1" /> },
+    { key: 'super_admin', label: 'Super Admin', icon: <Shield className="h-5 w-5 mb-1" /> },
+  ];
+
   return (
-    <div className="w-full max-w-md">
-      <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8">
+    <div className="w-full max-w-md mx-auto">
+      <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-md border border-neutral-200 p-8 space-y-6">
         {/* Header */}
-        <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-900 mb-4">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-900 mx-auto">
             <Lock className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-2xl font-semibold text-neutral-900 mb-2">{title}</h1>
-          <p className="text-neutral-500">{subtitle}</p>
+          <h1 className="text-2xl font-semibold text-neutral-900">{title}</h1>
+          <p className="text-neutral-500 text-sm">{subtitle}</p>
         </div>
+
+        {/* Role Selector */}
+        {showRoleSelector && (
+          <div className="relative flex justify-center mb-6">
+            <div className="flex w-full border border-neutral-200 rounded-lg overflow-hidden bg-white/30 backdrop-blur-md shadow-inner">
+              {roles.map((r) => (
+                <button
+                  key={r.key}
+                  type="button"
+                  onClick={() => setRole(r.key as UserRole)}
+                  className={`
+                    flex-1 flex flex-col items-center justify-center py-3 text-xs font-light text-neutral-700 transition-all duration-200
+                    ${role === r.key ? 'bg-black/10 shadow-md' : 'bg-transparent'}
+                  `}
+                >
+                  {r.icon}
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Email Field */}
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-neutral-700 mb-2">
+          <div className="space-y-2">
+            <label htmlFor="email" className="block text-sm font-medium text-neutral-700">
               Email Address
             </label>
             <div className="relative">
@@ -68,7 +95,13 @@ export function LoginForm({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@example.com"
+                placeholder={
+                  role === 'student'
+                    ? 'student@university.edu.ph'
+                    : role === 'admin'
+                    ? 'admin@example.com'
+                    : 'superadmin@example.com'
+                }
                 required
                 className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
               />
@@ -76,8 +109,8 @@ export function LoginForm({
           </div>
 
           {/* Password Field */}
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-neutral-700 mb-2">
+          <div className="space-y-2">
+            <label htmlFor="password" className="block text-sm font-medium text-neutral-700">
               Password
             </label>
             <div className="relative">
@@ -93,41 +126,6 @@ export function LoginForm({
               />
             </div>
           </div>
-
-          {/* Role Selection */}
-          {showRoleSelector && (
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">Role</label>
-              <div className="grid grid-cols-2 gap-2 rounded-lg bg-neutral-100 p-1">
-                <button
-                  type="button"
-                  onClick={() => setRole('student')}
-                  className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    role === 'student'
-                      ? 'bg-white text-neutral-900 shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-900'
-                  }`}
-                  aria-pressed={role === 'student'}
-                >
-                  <User className="h-4 w-4" />
-                  {roleLabels.student}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    role === 'admin'
-                      ? 'bg-white text-neutral-900 shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-900'
-                  }`}
-                  aria-pressed={role === 'admin'}
-                >
-                  <Shield className="h-4 w-4" />
-                  {roleLabels.admin}
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Remember Me & Forgot Password */}
           <div className="flex items-center justify-between">
@@ -155,17 +153,7 @@ export function LoginForm({
             disabled={isLoading}
             className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? (
-              <span className="flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Signing in...
-              </span>
-            ) : (
-              'Sign In'
-            )}
+            {isLoading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
 
