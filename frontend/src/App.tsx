@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState, type ComponentType } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LoginForm } from './components/LoginForm';
 import { ForgotPasswordForm } from './components/ForgotPasswordForm';
+import { NotFound } from './components/NotFound';
 import {
   AppReports,
   ArchiveRequests,
@@ -26,10 +27,18 @@ import {
   MessageSquareWarning,
 } from 'lucide-react';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+
 type NavItem = {
   id: string;
   label: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: any;
+};
+
+type ViewRoute = {
+  id: string;
+  path: string;
+  element: any;
 };
 
 export default function App() {
@@ -38,6 +47,54 @@ export default function App() {
   const [role, setRole] = useState<UserRole>('admin');
   const [currentView, setCurrentView] = useState('overview');
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Check for existing session on app load
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.user) {
+            setRole(data.user.role);
+            setCurrentView(navItemsByRole[data.user.role][0]?.id ?? 'overview');
+            setIsAuthenticated(true);
+            const defaultPath = viewRoutesByRole[data.user.role][0]?.path ?? '/';
+            if (location.pathname === '/' || location.pathname === '/login/student' || location.pathname === '/login/admin' || location.pathname === '/login/super-admin') {
+              navigate(defaultPath, { replace: true });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+      } finally {
+        setIsLoadingAuth(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setIsAuthenticated(false);
+      setRole('admin');
+      navigate('/');
+    }
+  };
 
   const navItemsByRole: Record<UserRole, NavItem[]> = useMemo(
     () => ({
@@ -69,44 +126,93 @@ export default function App() {
     [navItemsByRole, role]
   );
 
+  const viewRoutesByRole = useMemo<Record<UserRole, ViewRoute[]>>(
+    () => ({
+      student: [
+        { id: 'student-attendance', path: '/student/attendance', element: <StudentAttendance /> },
+        { id: 'student-profile', path: '/student/profile', element: <StudentProfile /> },
+        { id: 'student-report', path: '/student/report', element: <AppReports mode="submit" /> },
+      ],
+      admin: [
+        { id: 'overview', path: '/admin/overview', element: <Overview /> },
+        { id: 'reports', path: '/admin/reports', element: <Reports role={role} /> },
+        {
+          id: 'archive-requests',
+          path: '/admin/archive-requests',
+          element: <ArchiveRequests canReview={false} />,
+        },
+      ],
+      super_admin: [
+        { id: 'overview', path: '/super-admin/overview', element: <Overview /> },
+        { id: 'users', path: '/super-admin/users', element: <UserManagement /> },
+        { id: 'reports', path: '/super-admin/reports', element: <Reports role={role} /> },
+        {
+          id: 'archive-requests',
+          path: '/super-admin/archive-requests',
+          element: <ArchiveRequests canReview />,
+        },
+        {
+          id: 'settings',
+          path: '/super-admin/settings',
+          element: (
+            <Settings
+              canManageMaintenance
+              isMaintenanceMode={isMaintenanceMode}
+              onToggleMaintenance={setIsMaintenanceMode}
+            />
+          ),
+        },
+        { id: 'logs', path: '/super-admin/logs', element: <AuditLogs /> },
+        { id: 'app-reports', path: '/super-admin/app-reports', element: <AppReports mode="review" /> },
+      ],
+    }),
+    [isMaintenanceMode, role]
+  );
+
+  const defaultPath = viewRoutesByRole[role][0]?.path ?? '/';
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingAuth) {
+      return;
+    }
+    const roleRoutes = viewRoutesByRole[role];
+    const matchingRoute = roleRoutes.find((route) => route.path === location.pathname);
+    if (matchingRoute) {
+      if (matchingRoute.id !== currentView) {
+        setCurrentView(matchingRoute.id);
+      }
+      return;
+    }
+    if (location.pathname !== defaultPath) {
+      navigate(defaultPath, { replace: true });
+    }
+  }, [currentView, defaultPath, isAuthenticated, isLoadingAuth, location.pathname, navigate, role, viewRoutesByRole]);
+
   useEffect(() => {
     if (!allowedViews.has(currentView)) {
       setCurrentView(navItemsByRole[role][0]?.id ?? 'overview');
     }
   }, [allowedViews, currentView, navItemsByRole, role]);
 
-  const renderView = () => {
-    switch (currentView) {
-      case 'overview':
-        return <Overview />;
-      case 'users':
-        return <UserManagement />;
-      case 'reports':
-        return <Reports role={role} />;
-      case 'settings':
-        return (
-          <Settings
-            canManageMaintenance={role === 'super_admin'}
-            isMaintenanceMode={isMaintenanceMode}
-            onToggleMaintenance={setIsMaintenanceMode}
-          />
-        );
-      case 'logs':
-        return <AuditLogs />;
-      case 'student-attendance':
-        return <StudentAttendance />;
-      case 'student-profile':
-        return <StudentProfile />;
-      case 'student-report':
-        return <AppReports mode="submit" />;
-      case 'archive-requests':
-        return <ArchiveRequests canReview={role === 'super_admin'} />;
-      case 'app-reports':
-        return <AppReports mode="review" />;
-      default:
-        return <Overview />;
+  const handleNavigate = (viewId: string) => {
+    const match = viewRoutesByRole[role].find((route) => route.id === viewId);
+    if (!match) {
+      return;
     }
+    setCurrentView(viewId);
+    navigate(match.path);
   };
+
+  if (isLoadingAuth) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-neutral-900"></div>
+          <p className="mt-4 text-neutral-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isAuthenticated) {
     if (isMaintenanceMode && role !== 'super_admin') {
@@ -119,7 +225,7 @@ export default function App() {
             </p>
             <button
               className="mt-6 px-5 py-2.5 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 transition-colors"
-              onClick={() => setIsAuthenticated(false)}
+              onClick={handleLogout}
             >
               Sign Out
             </button>
@@ -130,12 +236,34 @@ export default function App() {
     return (
       <DashboardLayout
         currentView={currentView}
-        onNavigate={setCurrentView}
-        onLogout={() => setIsAuthenticated(false)}
+        onNavigate={handleNavigate}
+        onLogout={handleLogout}
         role={role}
         navItems={navItemsByRole[role]}
         isMaintenanceMode={isMaintenanceMode}
-        children={renderView()}
+        children={
+          <Routes>
+            {viewRoutesByRole[role].map((route) => (
+              <Route key={route.path} path={route.path} element={route.element} />
+            ))}
+            <Route path="/student" element={<Navigate to={defaultPath} replace />} />
+            <Route path="/admin" element={<Navigate to={defaultPath} replace />} />
+            <Route path="/super-admin" element={<Navigate to={defaultPath} replace />} />
+            <Route path="/login/student" element={<Navigate to={defaultPath} replace />} />
+            <Route path="/login/admin" element={<Navigate to={defaultPath} replace />} />
+            <Route path="/login/super-admin" element={<Navigate to={defaultPath} replace />} />
+            <Route path="/" element={<Navigate to={defaultPath} replace />} />
+            <Route 
+              path="*" 
+              element={
+                <NotFound 
+                  isAuthenticated={true} 
+                  onGoHome={() => navigate(defaultPath)} 
+                />
+              } 
+            />
+          </Routes>
+        }
       />
     );
   }
@@ -168,10 +296,54 @@ export default function App() {
               path="/"
               element={
                 <LoginForm
+                  forcedRole="student"
+                  showRoleSelector={false}
+                  title="Student Login"
+                  subtitle="Enter your credentials to continue"
                   onLogin={(nextRole) => {
                     setRole(nextRole);
                     setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
                     setIsAuthenticated(true);
+                    const nextDefault = viewRoutesByRole[nextRole][0]?.path ?? '/';
+                    navigate(nextDefault);
+                  }}
+                  onForgot={() => setAuthView('forgot')}
+                />
+              }
+            />
+            <Route
+              path="/login/student"
+              element={
+                <LoginForm
+                  forcedRole="student"
+                  showRoleSelector={false}
+                  title="Student Login"
+                  subtitle="Enter your credentials to continue"
+                  onLogin={(nextRole) => {
+                    setRole(nextRole);
+                    setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
+                    setIsAuthenticated(true);
+                    const nextDefault = viewRoutesByRole[nextRole][0]?.path ?? '/';
+                    navigate(nextDefault);
+                  }}
+                  onForgot={() => setAuthView('forgot')}
+                />
+              }
+            />
+            <Route
+              path="/login/admin"
+              element={
+                <LoginForm
+                  forcedRole="admin"
+                  showRoleSelector={false}
+                  title="Admin Login"
+                  subtitle="Enter your credentials to continue"
+                  onLogin={(nextRole) => {
+                    setRole(nextRole);
+                    setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
+                    setIsAuthenticated(true);
+                    const nextDefault = viewRoutesByRole[nextRole][0]?.path ?? '/';
+                    navigate(nextDefault);
                   }}
                   onForgot={() => setAuthView('forgot')}
                 />
@@ -189,23 +361,13 @@ export default function App() {
                     setRole(nextRole);
                     setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
                     setIsAuthenticated(true);
+                    const nextDefault = viewRoutesByRole[nextRole][0]?.path ?? '/';
+                    navigate(nextDefault);
                   }}
                 />
               }
             />
-            <Route
-              path="/login"
-              element={
-                <LoginForm
-                  onLogin={(nextRole) => {
-                    setRole(nextRole);
-                    setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
-                    setIsAuthenticated(true);
-                  }}
-                  onForgot={() => setAuthView('forgot')}
-                />
-              }
-            />
+            <Route path="*" element={<NotFound isAuthenticated={false} />} />
           </Routes>
         ) : (
           <ForgotPasswordForm onBack={() => setAuthView('login')} />

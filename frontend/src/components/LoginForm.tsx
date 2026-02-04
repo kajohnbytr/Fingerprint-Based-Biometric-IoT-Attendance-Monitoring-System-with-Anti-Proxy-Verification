@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
-import { Lock, Mail, Shield, User } from 'lucide-react';
-import { roleLabels, type UserRole } from '../types/rbac';
+import React, { useState } from 'react';
+import { Lock, Mail } from 'lucide-react';
+import type { UserRole } from '../types/rbac';
+
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
 
 export function LoginForm({
   onLogin,
   onForgot,
   forcedRole,
-  showRoleSelector = true,
+  showRoleSelector = false,
   title = 'Portal Login',
-  subtitle = 'Enter your credentials and select a role',
+  subtitle = 'Enter your credentials to continue',
 }: {
   onLogin?: (role: UserRole) => void;
   onForgot?: () => void;
@@ -19,27 +21,59 @@ export function LoginForm({
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>(forcedRole ?? 'student');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (forcedRole) {
-      setRole(forcedRole);
+  const getEmailPlaceholder = () => {
+    switch (forcedRole) {
+      case 'student':
+        return 'Student Email';
+      case 'admin':
+        return 'ADMIN ID';
+      case 'super_admin':
+        return 'This is a prohibited area';
+      default:
+        return 'email@example.com';
     }
-  }, [forcedRole]);
+  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: any) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
-    
-    // Mock login simulation
-    setTimeout(() => {
-      console.log('Login attempted with:', { email, password });
-      setIsLoading(false);
-      if (onLogin) {
-        onLogin(role);
+
+    try {
+      const requestBody: { email: string; password: string; expectedRole?: string } = {
+        email,
+        password,
+      };
+
+      if (forcedRole) {
+        requestBody.expectedRole = forcedRole;
       }
-    }, 1500);
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      if (data.user && onLogin) {
+        onLogin(data.user.role as UserRole);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during login');
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -68,7 +102,7 @@ export function LoginForm({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@example.com"
+                placeholder={getEmailPlaceholder()}
                 required
                 className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
               />
@@ -94,38 +128,10 @@ export function LoginForm({
             </div>
           </div>
 
-          {/* Role Selection */}
-          {showRoleSelector && (
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">Role</label>
-              <div className="grid grid-cols-2 gap-2 rounded-lg bg-neutral-100 p-1">
-                <button
-                  type="button"
-                  onClick={() => setRole('student')}
-                  className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    role === 'student'
-                      ? 'bg-white text-neutral-900 shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-900'
-                  }`}
-                  aria-pressed={role === 'student'}
-                >
-                  <User className="h-4 w-4" />
-                  {roleLabels.student}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    role === 'admin'
-                      ? 'bg-white text-neutral-900 shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-900'
-                  }`}
-                  aria-pressed={role === 'admin'}
-                >
-                  <Shield className="h-4 w-4" />
-                  {roleLabels.admin}
-                </button>
-              </div>
+          {/* Error Message */}
+          {error && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+              <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
 

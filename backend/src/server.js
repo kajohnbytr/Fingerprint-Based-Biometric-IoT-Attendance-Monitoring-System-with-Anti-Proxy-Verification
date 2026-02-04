@@ -1,9 +1,11 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 
 const connectDB = require('./config/db');
 const healthRoutes = require('./routes/health');
+const authRoutes = require('./routes/auth');
 
 dotenv.config();
 
@@ -16,8 +18,10 @@ const corsOrigins = process.env.CORS_ORIGIN
 
 app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 app.use('/api/health', healthRoutes);
+app.use('/api/auth', authRoutes);
 
 const PORT = process.env.PORT || 5000;
 
