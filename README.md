@@ -16,25 +16,53 @@
  - Recharts for data visualizations
  - Lucide icons
 
- ## Getting Started
- 1. Install dependencies:
-    ```bash
-    npm install
-    ```
- 2. Start the dev server:
-    ```bash
-    npm run dev
-    ```
+## Getting Started (Frontend)
+1. Install dependencies:
+   ```bash
+   cd frontend
+   npm install
+   ```
+2. Start the dev server:
+   ```bash
+   npm run dev
+   ```
 
- ## Scripts
- - `npm run dev` - start development server
- - `npm run build` - build for production
- - `npm run preview` - preview the production build
+## Scripts (Frontend)
+- `npm run dev` - start development server
+- `npm run build` - build for production
+- `npm run preview` - preview the production build
+
+## Backend Setup (MERN)
+1. Install backend dependencies:
+   ```bash
+   cd backend
+   npm install
+   ```
+2. Create a `.env` file:
+   ```bash
+   copy .env.example .env
+   ```
+3. Update `MONGODB_URI` in `.env` with your database connection string.
+4. Start the backend server:
+   ```bash
+   npm run dev
+   ```
+5. Verify it is running:
+   - `GET http://localhost:5000/api/health` should return `{ "status": "ok" }`.
+
+## MongoDB Setup
+### Local MongoDB
+1. Install MongoDB Community Server.
+2. Ensure the MongoDB service is running.
+3. Use this connection string in `.env`:
+   - `MONGODB_URI=mongodb://127.0.0.1:27017/capstone`
+
+### MongoDB Atlas
+1. Create a new cluster in MongoDB Atlas.
+2. Create a database user and password.
+3. Allow your IP address in Network Access.
+4. Copy the SRV connection string and set it in `.env`:
+   - `MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/<dbName>?retryWrites=true&w=majority`
 
  ## Notes
  - Login and forgot-password actions are mocked for UI/demo purposes.
-<<<<<<< Updated upstream
-  
-=======
-  
->>>>>>> Stashed changes
