@@ -1,37 +1,28 @@
-const express = require('express');
-const cors = require('cors');
-const cookieParser = require('cookie-parser');
-const dotenv = require('dotenv');
-
-const connectDB = require('./config/db');
-const healthRoutes = require('./routes/health');
-const authRoutes = require('./routes/auth');
+import express from 'express';
+import dotenv from 'dotenv';
+import cors from 'cors';
+import authRoutes from './routes/auth.js';
+import { connectDB } from './config/db.js';
 
 dotenv.config();
 
-const app = express();
-
-const defaultOrigins = ['http://localhost:5173'];
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
-  : defaultOrigins;
-
-app.use(cors({ origin: corsOrigins, credentials: true }));
-app.use(express.json());
-app.use(cookieParser());
-
-app.use('/api/health', healthRoutes);
-app.use('/api/auth', authRoutes);
-
 const PORT = process.env.PORT || 5000;
 
-connectDB(process.env.MONGODB_URI)
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  })
-  .catch((error) => {
-    console.error('Failed to start server:', error.message);
-    process.exit(1);
-  });
+const app = express();
+
+// Enable CORS for frontend (adjust port if needed)
+app.use(cors({
+  origin: 'http://localhost:3000', // Change this if your frontend runs on a different port
+  credentials: true
+}));
+
+app.use(express.json());
+
+// IMPORTANT: Route is /api/auth to match your frontend calls
+app.use("/api/auth", authRoutes);
+
+connectDB();
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

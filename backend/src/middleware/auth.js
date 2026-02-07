@@ -1,34 +1,33 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+import User from "../models/User.js";
+import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+export const protect = async (req, res, next) => {
+    let token;
 
-const authenticate = async (req, res, next) => {
-  try {
-    const token = req.cookies?.token;
-
+    // Check for Bearer token in Authorization header
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        try {
+            // Extract token
+            token = req.headers.authorization.split(' ')[1];
+            
+            // Verify token
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            
+            // Get user from token
+            req.user = await User.findById(decoded.id).select('-password');
+            
+            if (!req.user) {
+                return res.status(401).json({ error: 'User not found' });
+            }
+            
+            return next();
+        } catch (error) {
+            console.error('Token verification error:', error);
+            return res.status(401).json({ error: 'Not authorized, token failed' });
+        }
+    }
+    
     if (!token) {
-      return res.status(401).json({ error: 'Authentication required' });
+        return res.status(401).json({ error: 'Not authorized, no token provided' });
     }
-
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await User.findById(decoded.userId).select('-password');
-
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-
-    req.user = user;
-    next();
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Token expired' });
-    }
-    res.status(500).json({ error: 'Authentication error' });
-  }
-};
-
-module.exports = { authenticate };
+}

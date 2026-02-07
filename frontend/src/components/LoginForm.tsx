@@ -64,14 +64,23 @@ export function LoginForm({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.error || data.message || 'Login failed');
       }
 
+      // Store token in localStorage
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+
+      // Call onLogin callback
       if (data.user && onLogin) {
         onLogin(data.user.role as UserRole);
       }
     } catch (err) {
+      console.error('Login error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during login');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -146,13 +155,15 @@ export function LoginForm({
                 Remember me
               </span>
             </label>
-            <button
-              type="button"
-              onClick={onForgot}
-              className="text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
-            >
-              Forgot password?
-            </button>
+            {onForgot && (
+              <button
+                type="button"
+                onClick={onForgot}
+                className="text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+              >
+                Forgot password?
+              </button>
+            )}
           </div>
 
           {/* Submit Button */}

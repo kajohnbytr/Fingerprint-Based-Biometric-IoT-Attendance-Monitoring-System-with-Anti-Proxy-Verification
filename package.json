@@ -1,0 +1,28 @@
+{
+  "name": "fingerprint-based-biometric-iot-attendance-monitoring-system-with-anti-proxy-verification",
+  "version": "1.0.0",
+  "description": "A modern admin dashboard for CITE attendance monitoring with a minimalist login/forgot-password flow and responsive layout.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kajohnbytr/Fingerprint-Based-Biometric-IoT-Attendance-Monitoring-System-with-Anti-Proxy-Verification.git"
+  },
+  "keywords":[],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kajohnbytr/Fingerprint-Based-Biometric-IoT-Attendance-Monitoring-System-with-Anti-Proxy-Verification/issues"
+  },
+  "homepage": "https://github.com/kajohnbytr/Fingerprint-Based-Biometric-IoT-Attendance-Monitoring-System-with-Anti-Proxy-Verification#readme",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.1.6"
+  }
+}

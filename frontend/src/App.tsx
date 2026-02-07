@@ -55,8 +55,17 @@ export default function App() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+          setIsLoadingAuth(false);
+          return;
+        }
+
         const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-          credentials: 'include',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
         });
 
         if (response.ok) {
@@ -70,9 +79,15 @@ export default function App() {
               navigate(defaultPath, { replace: true });
             }
           }
+        } else {
+          // Token is invalid, clear it
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
         }
       } catch (error) {
         console.error('Auth check failed:', error);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
       } finally {
         setIsLoadingAuth(false);
       }
@@ -83,13 +98,20 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      const token = localStorage.getItem('token');
+      
       await fetch(`${API_BASE_URL}/api/auth/logout`, {
         method: 'POST',
-        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      // Clear localStorage
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       setIsAuthenticated(false);
       setRole('admin');
       navigate('/');
@@ -219,7 +241,7 @@ export default function App() {
       return (
         <div className="min-h-screen bg-neutral-50 flex items-center justify-center px-6">
           <div className="max-w-lg text-center bg-white border border-neutral-200 rounded-2xl p-8 shadow-sm">
-            <h1 className="text-2xl font-semibold text-neutral-900">We’ll be right back</h1>
+            <h1 className="text-2xl font-semibold text-neutral-900">We'll be right back</h1>
             <p className="text-neutral-600 mt-3">
               The system is currently in maintenance mode. Please check back later.
             </p>
@@ -282,10 +304,13 @@ export default function App() {
         <div className="absolute top-1/3 right-1/4 w-64 h-64 rounded-full bg-neutral-200/20 blur-2xl"></div>
         
         {/* Subtle Grid Pattern */}
-        <div className="absolute inset-0 opacity-[0.02]" style={{
-          backgroundImage: `radial-gradient(circle, #000 1px, transparent 1px)`,
+        <div 
+        className="absolute inset-0 opacity-[0.02]" 
+        style={{
+          backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)',
           backgroundSize: '50px 50px'
-        }}></div>
+        }}
+      ></div>
       </div>
 
       {/* Content */}
