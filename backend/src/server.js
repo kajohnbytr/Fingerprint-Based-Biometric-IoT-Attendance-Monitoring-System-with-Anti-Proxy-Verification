@@ -9,6 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 const connectDB = require('./config/db');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
+const studentRoutes = require('./routes/students');
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use(cookieParser());
 
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/students', studentRoutes);
 
 const PORT = process.env.PORT || 5000;
 
