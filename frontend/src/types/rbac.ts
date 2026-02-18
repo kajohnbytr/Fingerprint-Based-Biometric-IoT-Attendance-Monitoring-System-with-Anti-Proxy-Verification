@@ -5,3 +5,9 @@ export const roleLabels: Record<UserRole, string> = {
   admin: 'Admin (Teacher)',
   super_admin: 'Super Admin (Developer)',
 };
+
+export const panelLabels: Record<UserRole, string> = {
+  student: 'Student Panel',
+  admin: 'Admin Panel',
+  super_admin: 'Super Admin Panel',
+};

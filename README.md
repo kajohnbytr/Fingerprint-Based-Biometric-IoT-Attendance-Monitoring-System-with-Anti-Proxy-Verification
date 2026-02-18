@@ -64,5 +64,18 @@
 4. Copy the SRV connection string and set it in `.env`:
    - `MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/<dbName>?retryWrites=true&w=majority`
 
- ## Notes
- - Login and forgot-password actions are mocked for UI/demo purposes.
+## Invite Link Registration
+- Admins and teachers generate invite links from **Invite Students** in the dashboard.
+- Copy the link and send it to the student (e.g., via email).
+- Student clicks the link → opens registration form in browser → creates account.
+- Each invite link expires in 7 days (configurable) and can be used once.
+
+## IoT / Fingerprint Attendance
+- Fingerprint scanners can record attendance by calling:
+  - `POST /api/iot/attendance` with `X-API-Key` header (set `IOT_API_KEY` in `.env`)
+  - Body: `{ "userId": "..." }` or `{ "email": "student@phinmaed.edu.ph" }` and optional `"status": "Present"|"Late"`, `"deviceId"`
+- The IoT device should identify the student (e.g., from fingerprint match) and send the request to record check-in.
+
+## Notes
+- Set `FRONTEND_URL` in `.env` for invite links (default: `http://localhost:3000`).
+- Set `IOT_API_KEY` in `.env` for IoT attendance API access.

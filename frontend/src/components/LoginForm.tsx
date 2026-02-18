@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, Mail } from 'lucide-react';
 import type { UserRole } from '../types/rbac';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+import { API_BASE_URL } from '../config';
 
 export function LoginForm({
   onLogin,
@@ -12,7 +12,7 @@ export function LoginForm({
   title = 'Portal Login',
   subtitle = 'Enter your credentials to continue',
 }: {
-  onLogin?: (role: UserRole) => void;
+  onLogin?: (user: { email: string; role: UserRole }) => void;
   onForgot?: () => void;
   forcedRole?: UserRole;
   showRoleSelector?: boolean;
@@ -68,7 +68,7 @@ export function LoginForm({
       }
 
       if (data.user && onLogin) {
-        onLogin(data.user.role as UserRole);
+        onLogin(data.user as { email: string; role: UserRole });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred during login');

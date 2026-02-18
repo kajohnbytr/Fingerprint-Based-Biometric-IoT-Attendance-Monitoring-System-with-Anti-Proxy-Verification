@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from '../ui/dropdown-menu';
-import { roleLabels, type UserRole } from '../../types/rbac';
+import { roleLabels, panelLabels, type UserRole } from '../../types/rbac';
 
 type NavItem = {
   id: string;
@@ -30,6 +30,7 @@ interface DashboardLayoutProps {
   onNavigate: (view: string) => void;
   onLogout: () => void;
   role: UserRole;
+  userEmail: string;
   navItems: NavItem[];
   isMaintenanceMode: boolean;
 }
@@ -40,6 +41,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onNavigate,
   onLogout,
   role,
+  userEmail,
   navItems,
   isMaintenanceMode,
 }: DashboardLayoutProps) => {
@@ -54,7 +56,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <div className="w-8 h-8 bg-neutral-900 rounded-lg flex items-center justify-center">
               <Shield className="w-5 h-5 text-white" />
             </div>
-            <span className="font-bold text-xl text-neutral-900">AdminPanel</span>
+            <span className="font-bold text-xl text-neutral-900">{panelLabels[role]}</span>
           </div>
         </div>
 
@@ -103,7 +105,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <div className="w-8 h-8 bg-neutral-900 rounded-lg flex items-center justify-center">
               <Shield className="w-5 h-5 text-white" />
             </div>
-            <span className="font-bold text-xl text-neutral-900">AdminPanel</span>
+            <span className="font-bold text-xl text-neutral-900">{panelLabels[role]}</span>
           </div>
           <button onClick={() => setIsSidebarOpen(false)}>
             <X className="w-6 h-6 text-neutral-500" />
@@ -177,7 +179,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 hover:bg-neutral-50 p-2 rounded-lg transition-colors outline-none">
                   <div className="text-right hidden md:block">
-                    <p className="text-sm font-medium text-neutral-900">Admin User</p>
+                    <p className="text-sm font-medium text-neutral-900 truncate max-w-[180px]" title={userEmail}>
+                      {userEmail || roleLabels[role]}
+                    </p>
                     <p className="text-xs text-neutral-500">{roleLabels[role]}</p>
                   </div>
                   <Avatar>

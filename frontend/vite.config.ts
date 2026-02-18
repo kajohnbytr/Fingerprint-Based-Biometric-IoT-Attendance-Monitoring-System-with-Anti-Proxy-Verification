@@ -55,6 +55,15 @@
     },
     server: {
       port: 3000,
+      host: true,
+      strictPort: false,
       open: true,
+      allowedHosts: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:5000',
+          changeOrigin: true,
+        },
+      },
     },
   });

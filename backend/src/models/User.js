@@ -7,6 +7,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    idNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     block: {
       type: String,
       trim: true,
@@ -60,6 +65,26 @@ const userSchema = new mongoose.Schema(
     roles: {
       type: [String],
       default: ['admin'],
+    },
+    fingerprint: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    webauthnCredentialId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    webauthnPublicKey: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    fingerprintTemplateId: {
+      type: String,
+      default: '',
+      trim: true,
     },
   },
   {

@@ -31,4 +31,26 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-module.exports = { authenticate };
+const requireRole = (allowedRoles = ['admin', 'super_admin']) => {
+  return (req, res, next) => {
+    const user = req.user;
+    if (!user || !user.roles || !Array.isArray(user.roles)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const hasRole = allowedRoles.some((r) => user.roles.includes(r));
+    if (!hasRole) {
+      return res.status(403).json({ error: 'Access denied. Admin or Super Admin only.' });
+    }
+    next();
+  };
+};
+
+const requireSuperAdmin = (req, res, next) => {
+  const user = req.user;
+  if (!user || !user.roles || !user.roles.includes('super_admin')) {
+    return res.status(403).json({ error: 'Access denied. Super Admin only.' });
+  }
+  next();
+};
+
+module.exports = { authenticate, requireRole, requireSuperAdmin };

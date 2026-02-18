@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MailWarning, Send } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -6,49 +6,83 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Badge } from '../ui/badge';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
-
-const mockReports = [
-  {
-    id: 'REP-2026-001',
-    title: 'Login timeout on mobile',
-    severity: 'High',
-    status: 'Open',
-    submittedBy: 'student01@campus.edu',
-    date: '2026-01-24',
-  },
-  {
-    id: 'REP-2026-002',
-    title: 'Attendance chart not loading',
-    severity: 'Medium',
-    status: 'Investigating',
-    submittedBy: 'student15@campus.edu',
-    date: '2026-01-22',
-  },
-];
+import { API_BASE_URL } from '../../config';
 
 export function AppReports({ mode }: { mode: 'submit' | 'review' }) {
+  const [reports, setReports] = useState<{ id: string; reportId: string; title: string; severity: string; status: string; submittedBy: string; date: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (mode === 'review') {
+      const fetchReports = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/admin/app-reports`, { credentials: 'include' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to load reports');
+          setReports(data.reports || []);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load reports');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchReports();
+    }
+  }, [mode]);
+
+  const updateReportStatus = async (id: string, status: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/app-reports/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update');
+      setReports((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
+
   if (mode === 'review') {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-neutral-900">App Reports</h1>
           <p className="text-neutral-500">Review issues submitted by students.</p>
+          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </div>
 
+        {isLoading ? (
+          <p className="text-sm text-neutral-500">Loading reports...</p>
+        ) : reports.length === 0 ? (
+          <p className="text-sm text-neutral-500">No app reports yet.</p>
+        ) : (
         <div className="grid gap-4">
-          {mockReports.map((report) => (
+          {reports.map((report) => (
             <Card key={report.id}>
               <CardHeader className="flex flex-row items-start justify-between">
                 <div className="space-y-1">
                   <CardTitle className="text-lg">{report.title}</CardTitle>
                   <CardDescription>
-                    {report.id} • {report.submittedBy} • {report.date}
+                    {report.reportId || report.id} • {report.submittedBy} • {report.date}
                   </CardDescription>
                 </div>
-                <Badge variant="outline" className="capitalize">
-                  {report.status}
-                </Badge>
+                <select
+                  value={(report.status || 'open').toLowerCase()}
+                  onChange={(e) => updateReportStatus(report.id, e.target.value)}
+                  className="text-sm rounded border border-neutral-200 px-2 py-1"
+                >
+                  <option value="open">Open</option>
+                  <option value="investigating">Investigating</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
               </CardHeader>
               <CardContent className="flex items-center gap-2 text-sm text-neutral-600">
                 <MailWarning className="w-4 h-4" />
@@ -57,6 +91,7 @@ export function AppReports({ mode }: { mode: 'submit' | 'review' }) {
             </Card>
           ))}
         </div>
+        )}
       </div>
     );
   }
@@ -65,7 +100,6 @@ export function AppReports({ mode }: { mode: 'submit' | 'review' }) {
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const sanitizeText = (value: string) =>

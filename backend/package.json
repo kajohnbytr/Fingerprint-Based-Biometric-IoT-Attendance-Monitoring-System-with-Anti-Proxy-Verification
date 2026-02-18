@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "seed": "node scripts/seedUsers.js",
+    "update-ngrok": "node scripts/updateNgrokUrl.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

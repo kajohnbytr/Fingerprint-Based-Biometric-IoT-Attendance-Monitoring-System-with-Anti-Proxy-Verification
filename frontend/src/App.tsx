@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Component, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LoginForm } from './components/LoginForm';
 import { ForgotPasswordForm } from './components/ForgotPasswordForm';
@@ -9,6 +9,7 @@ import {
   ArchiveRequests,
   AuditLogs,
   DashboardLayout,
+  InviteStudents,
   Overview,
   Reports,
   Settings,
@@ -26,9 +27,10 @@ import {
   ClipboardList,
   UserCircle,
   MessageSquareWarning,
+  Link2,
 } from 'lucide-react';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+import { API_BASE_URL } from './config';
 
 type NavItem = {
   id: string;
@@ -42,16 +44,65 @@ type ViewRoute = {
   element: any;
 };
 
+class RegistrationErrorBoundary extends Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Registration form error:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-neutral-200 p-8 text-center space-y-4">
+          <h1 className="text-xl font-semibold text-neutral-900">Something went wrong</h1>
+          <p className="text-neutral-500 text-sm">
+            The registration page could not load. Please check your connection and try again, or use the link from the same device where you received it.
+          </p>
+          <a
+            href="/register/student"
+            className="inline-block w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 text-center"
+          >
+            Try again
+          </a>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authView, setAuthView] = useState<'login' | 'forgot'>('login');
   const [role, setRole] = useState<UserRole>('admin');
+  const [userEmail, setUserEmail] = useState<string>('');
   const [currentView, setCurrentView] = useState('overview');
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
-  const isRegistrationRoute = location.pathname === '/register/student';
+  const isRegistrationRoute = location.pathname === '/register/student' || location.pathname.startsWith('/register/student/');
+
+  useEffect(() => {
+    const fetchMaintenance = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/health/status`, { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setIsMaintenanceMode(!!data.maintenanceMode);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchMaintenance();
+  }, []);
 
   // Check for existing session on app load
   useEffect(() => {
@@ -65,6 +116,7 @@ export default function App() {
           const data = await response.json();
           if (data.user) {
             setRole(data.user.role);
+            setUserEmail(data.user.email ?? '');
             setCurrentView(navItemsByRole[data.user.role][0]?.id ?? 'overview');
             setIsAuthenticated(true);
             const defaultPath = viewRoutesByRole[data.user.role][0]?.path ?? '/';
@@ -94,6 +146,7 @@ export default function App() {
     } finally {
       setIsAuthenticated(false);
       setRole('admin');
+      setUserEmail('');
       navigate('/');
     }
   };
@@ -108,12 +161,14 @@ export default function App() {
       admin: [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'reports', label: 'Class Reports', icon: FileText },
+        { id: 'invite-students', label: 'Invite Students', icon: Link2 },
         { id: 'archive-requests', label: 'Archive Requests', icon: ClipboardList },
       ],
       super_admin: [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'users', label: 'User Management', icon: Users },
         { id: 'reports', label: 'Reports & Analytics', icon: FileText },
+        { id: 'invite-students', label: 'Invite Students', icon: Link2 },
         { id: 'archive-requests', label: 'Archive Requests', icon: ClipboardList },
         { id: 'settings', label: 'System Configuration', icon: SettingsIcon },
         { id: 'logs', label: 'Audit Logs', icon: Shield },
@@ -136,8 +191,9 @@ export default function App() {
         { id: 'student-report', path: '/student/report', element: <AppReports mode="submit" /> },
       ],
       admin: [
-        { id: 'overview', path: '/admin/overview', element: <Overview /> },
+        { id: 'overview', path: '/admin/overview', element: <Overview role="admin" /> },
         { id: 'reports', path: '/admin/reports', element: <Reports role={role} /> },
+        { id: 'invite-students', path: '/admin/invite-students', element: <InviteStudents /> },
         {
           id: 'archive-requests',
           path: '/admin/archive-requests',
@@ -145,9 +201,10 @@ export default function App() {
         },
       ],
       super_admin: [
-        { id: 'overview', path: '/super-admin/overview', element: <Overview /> },
+        { id: 'overview', path: '/super-admin/overview', element: <Overview role="super_admin" /> },
         { id: 'users', path: '/super-admin/users', element: <UserManagement /> },
         { id: 'reports', path: '/super-admin/reports', element: <Reports role={role} /> },
+        { id: 'invite-students', path: '/super-admin/invite-students', element: <InviteStudents /> },
         {
           id: 'archive-requests',
           path: '/super-admin/archive-requests',
@@ -223,8 +280,10 @@ export default function App() {
             }}
           ></div>
         </div>
-        <div className="relative z-10">
-          <StudentRegistrationForm />
+        <div className="relative z-10 w-full max-w-md flex justify-center">
+          <RegistrationErrorBoundary>
+            <StudentRegistrationForm />
+          </RegistrationErrorBoundary>
         </div>
       </div>
     );
@@ -266,6 +325,7 @@ export default function App() {
         onNavigate={handleNavigate}
         onLogout={handleLogout}
         role={role}
+        userEmail={userEmail}
         navItems={navItemsByRole[role]}
         isMaintenanceMode={isMaintenanceMode}
         children={
@@ -327,11 +387,12 @@ export default function App() {
                   showRoleSelector={false}
                   title="Student Login"
                   subtitle="Enter your credentials to continue"
-                  onLogin={(nextRole) => {
-                    setRole(nextRole);
-                    setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
+                  onLogin={(user) => {
+                    setRole(user.role);
+                    setUserEmail(user.email ?? '');
+                    setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
                     setIsAuthenticated(true);
-                    const nextDefault = viewRoutesByRole[nextRole][0]?.path ?? '/';
+                    const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
                     navigate(nextDefault);
                   }}
                   onForgot={() => setAuthView('forgot')}
@@ -346,11 +407,12 @@ export default function App() {
                   showRoleSelector={false}
                   title="Student Login"
                   subtitle="Enter your credentials to continue"
-                  onLogin={(nextRole) => {
-                    setRole(nextRole);
-                    setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
+                  onLogin={(user) => {
+                    setRole(user.role);
+                    setUserEmail(user.email ?? '');
+                    setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
                     setIsAuthenticated(true);
-                    const nextDefault = viewRoutesByRole[nextRole][0]?.path ?? '/';
+                    const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
                     navigate(nextDefault);
                   }}
                   onForgot={() => setAuthView('forgot')}
@@ -366,11 +428,12 @@ export default function App() {
                   showRoleSelector={false}
                   title="Admin Login"
                   subtitle="Enter your credentials to continue"
-                  onLogin={(nextRole) => {
-                    setRole(nextRole);
-                    setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
+                  onLogin={(user) => {
+                    setRole(user.role);
+                    setUserEmail(user.email ?? '');
+                    setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
                     setIsAuthenticated(true);
-                    const nextDefault = viewRoutesByRole[nextRole][0]?.path ?? '/';
+                    const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
                     navigate(nextDefault);
                   }}
                   onForgot={() => setAuthView('forgot')}
@@ -385,11 +448,12 @@ export default function App() {
                   showRoleSelector={false}
                   title="Super Admin Login"
                   subtitle="Enter your credentials to continue"
-                  onLogin={(nextRole) => {
-                    setRole(nextRole);
-                    setCurrentView(navItemsByRole[nextRole][0]?.id ?? 'overview');
+                  onLogin={(user) => {
+                    setRole(user.role);
+                    setUserEmail(user.email ?? '');
+                    setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
                     setIsAuthenticated(true);
-                    const nextDefault = viewRoutesByRole[nextRole][0]?.path ?? '/';
+                    const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
                     navigate(nextDefault);
                   }}
                 />

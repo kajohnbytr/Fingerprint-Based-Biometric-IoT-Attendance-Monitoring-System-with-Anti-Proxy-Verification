@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Plus, 
   Search, 
@@ -39,23 +39,72 @@ import {
 } from "../ui/dialog";
 import { Label } from "../ui/label";
 
-// Mock Data
-const users = [
-  { id: 1, name: 'Alice Johnson', email: 'alice@university.edu', role: 'Student', department: 'Computer Science', status: 'Active' },
-  { id: 2, name: 'Dr. Robert Smith', email: 'robert.smith@university.edu', role: 'Admin (Teacher)', department: 'Physics', status: 'Active' },
-  { id: 3, name: 'Sarah Williams', email: 'sarah.w@university.edu', role: 'Super Admin', department: 'Administration', status: 'Active' },
-  { id: 4, name: 'Michael Brown', email: 'm.brown@university.edu', role: 'Student', department: 'Engineering', status: 'Inactive' },
-  { id: 5, name: 'Emily Davis', email: 'emily.d@university.edu', role: 'Admin (Teacher)', department: 'Mathematics', status: 'Active' },
-];
+import { API_BASE_URL } from '../../config';
+
+type UserRow = { id: string; name: string; email: string; role: string; roleLabel: string; department: string; status: string };
 
 export function UserManagement() {
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [addName, setAddName] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addPassword, setAddPassword] = useState('');
+  const [addRole, setAddRole] = useState('student');
+  const [isCreating, setIsCreating] = useState(false);
 
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const fetchUsers = async () => {
+    try {
+      const params = searchTerm ? new URLSearchParams({ search: searchTerm }) : '';
+      const res = await fetch(`${API_BASE_URL}/api/admin/users${params ? `?${params}` : ''}`, { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load users');
+      setUsers(data.users || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load users');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setIsLoading(true);
+    fetchUsers();
+  }, [searchTerm]);
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!addEmail.trim() || !addPassword.trim()) {
+      setError('Email and password are required');
+      return;
+    }
+    setIsCreating(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: addName.trim(), email: addEmail.trim(), password: addPassword, role: addRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create user');
+      setIsAddUserOpen(false);
+      setAddName('');
+      setAddEmail('');
+      setAddPassword('');
+      setAddRole('student');
+      fetchUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create user');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const filteredUsers = users;
 
   return (
     <div className="space-y-6">
@@ -78,43 +127,46 @@ export function UserManagement() {
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Add New User</DialogTitle>
-                <DialogDescription>
-                  Create a new account for a student, faculty member, or admin.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="name" className="text-right">
-                    Name
-                  </Label>
-                  <Input id="name" placeholder="John Doe" className="col-span-3" />
+              <form onSubmit={handleCreateUser}>
+                <DialogHeader>
+                  <DialogTitle>Add New User</DialogTitle>
+                  <DialogDescription>
+                    Create a new account for a student, faculty member, or admin.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  {error && <p className="text-sm text-red-600">{error}</p>}
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="name" className="text-right">Name</Label>
+                    <Input id="name" placeholder="John Doe" className="col-span-3" value={addName} onChange={(e) => setAddName(e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="email" className="text-right">Email</Label>
+                    <Input id="email" type="email" placeholder="john@university.edu" className="col-span-3" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} required />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="password" className="text-right">Password</Label>
+                    <Input id="password" type="password" placeholder="••••••••" className="col-span-3" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} required />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="role" className="text-right">Role</Label>
+                    <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
+                      <option value="student">Student</option>
+                      <option value="admin">Admin (Teacher)</option>
+                      <option value="super_admin">Super Admin (Developer)</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="email" className="text-right">
-                    Email
-                  </Label>
-                  <Input id="email" placeholder="john@university.edu" className="col-span-3" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="role" className="text-right">
-                    Role
-                  </Label>
-                  <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                    <option value="student">Student</option>
-                    <option value="admin">Admin (Teacher)</option>
-                    <option value="super_admin">Super Admin (Developer)</option>
-                  </select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit" onClick={() => setIsAddUserOpen(false)}>Create Account</Button>
-              </DialogFooter>
+                <DialogFooter>
+                  <Button type="submit" disabled={isCreating}>{isCreating ? 'Creating...' : 'Create Account'}</Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
       </div>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {/* Filters & Search */}
       <div className="flex items-center gap-4 bg-white p-4 rounded-lg border border-neutral-200 shadow-sm">
@@ -127,7 +179,6 @@ export function UserManagement() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        {/* Additional filters could go here */}
       </div>
 
       {/* Table */}
@@ -143,7 +194,15 @@ export function UserManagement() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.map((user) => (
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-neutral-500 py-8">Loading users...</TableCell>
+              </TableRow>
+            ) : filteredUsers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-neutral-500 py-8">No users found.</TableCell>
+              </TableRow>
+            ) : filteredUsers.map((user) => (
               <TableRow key={user.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
@@ -159,12 +218,12 @@ export function UserManagement() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    {user.role === 'Super Admin' ? (
+                    {user.role === 'super_admin' || user.roleLabel === 'Super Admin (Developer)' ? (
                       <Shield className="w-4 h-4 text-purple-600" />
                     ) : (
                       <User className="w-4 h-4 text-blue-600" />
                     )}
-                    <span className="text-sm">{user.role}</span>
+                    <span className="text-sm">{user.roleLabel || user.role}</span>
                   </div>
                 </TableCell>
                 <TableCell>{user.department}</TableCell>

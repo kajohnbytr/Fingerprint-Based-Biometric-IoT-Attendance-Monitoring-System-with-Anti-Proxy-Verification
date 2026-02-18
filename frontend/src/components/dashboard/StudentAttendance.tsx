@@ -3,7 +3,7 @@ import { CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+import { API_BASE_URL } from '../../config';
 
 type AttendanceRecord = {
   id: string;

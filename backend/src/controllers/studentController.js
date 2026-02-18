@@ -89,6 +89,57 @@ const updatePassword = async (req, res) => {
   }
 };
 
+const recordAttendance = async (req, res) => {
+  try {
+    const { status = 'Present', note = '' } = req.body;
+    const allowedStatuses = ['Present', 'Late', 'Absent'];
+    const finalStatus = allowedStatuses.includes(status) ? status : 'Present';
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const existing = await Attendance.findOne({
+      user: req.user._id,
+      date: { $gte: todayStart, $lt: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000) },
+    });
+    if (existing) {
+      return res.status(409).json({
+        error: 'Attendance already recorded for today',
+        record: {
+          id: existing._id,
+          date: existing.date.toISOString().slice(0, 10),
+          status: existing.status,
+          time: existing.time || '-',
+          note: existing.note || '',
+        },
+      });
+    }
+
+    const timeStr = now.toTimeString().slice(0, 5);
+    const record = await Attendance.create({
+      user: req.user._id,
+      date: todayStart,
+      status: finalStatus,
+      time: timeStr,
+      note: trimIfString(note),
+    });
+
+    return res.status(201).json({
+      message: 'Attendance recorded',
+      record: {
+        id: record._id,
+        date: record.date.toISOString().slice(0, 10),
+        status: record.status,
+        time: record.time || '-',
+        note: record.note || '',
+      },
+    });
+  } catch (error) {
+    console.error('Record attendance error:', error);
+    return res.status(500).json({ error: 'Failed to record attendance' });
+  }
+};
+
 const getAttendance = async (req, res) => {
   try {
     const records = await Attendance.find({ user: req.user._id }).sort({ date: -1 });
@@ -182,6 +233,7 @@ module.exports = {
   getProfile,
   updateProfile,
   updatePassword,
+  recordAttendance,
   getAttendance,
   submitReport,
   getReports,

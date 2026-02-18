@@ -18,6 +18,8 @@ import {
   CardTitle 
 } from '../ui/card';
 
+import { API_BASE_URL } from '../../config';
+
 export function Settings({
   canManageMaintenance,
   isMaintenanceMode,
@@ -101,7 +103,24 @@ export function Settings({
                       Only super admins can access the system.
                     </p>
                   </div>
-                  <Switch checked={isMaintenanceMode} onCheckedChange={onToggleMaintenance} />
+                  <Switch
+                    checked={isMaintenanceMode}
+                    onCheckedChange={async (checked) => {
+                      try {
+                        const res = await fetch(`${API_BASE_URL}/api/admin/settings`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ settings: { maintenanceMode: checked } }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Failed to update');
+                        onToggleMaintenance(checked);
+                      } catch (e) {
+                        console.error('Failed to update maintenance mode:', e);
+                      }
+                    }}
+                  />
                 </CardContent>
               </Card>
             )}
