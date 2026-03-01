@@ -1,15 +1,42 @@
 import { useEffect, useState } from 'react';
-import { Lock, Mail, User, BookOpen, CalendarClock, DoorClosed, Layers, Plus, Trash2, Hash, Fingerprint } from 'lucide-react';
+import { Lock, Mail, User, BookOpen, CalendarClock, DoorClosed, Layers, Plus, Trash2, Hash } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { API_BASE_URL } from '../config';
 const REGISTRATION_KEY = 'studentRegistrationCompleted';
 
 const BLOCK_OPTIONS = [
-  '2BSIT-02', '2BSIT-03', '2BSIT-04', '2BSIT-05', '2BSIT-06',
-  '2BSIT-07', '2BSIT-08', '2BSIT-09', '2BSIT-10',
   '3BSIT-SD-01', '3BSIT-SD-02', '3BSIT-CS-01', '3BSIT-CS-02',
   '3BSIT-DA-01', '3BSIT-BI-01', '3BSIT-BI-02',
+];
+
+const SUBJECT_OPTIONS = [
+  'ITE 384',
+  'ITE 385',
+  'ITE 401',
+  'ITE 293',
+  'ITE 370',
+  'ITE 309',
+  'SSP 008',
+];
+
+const DAY_OPTIONS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
+
+const TIME_SCHEDULE_OPTIONS = [
+  '7:30 AM - 9:00 AM',
+  '9:00 AM - 10:30 AM',
+  '10:30 AM - 12:00 PM',
+  '12:00 PM - 1:30 PM',
+  '1:30 PM - 3:00 PM',
+  '3:00 PM - 4:30 PM',
+  '4:30 PM - 6:00 PM',
 ];
 
 export function StudentRegistrationForm() {
@@ -31,11 +58,7 @@ export function StudentRegistrationForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [fingerprintRegistered, setFingerprintRegistered] = useState(false);
-  const [fingerprintCredentialId, setFingerprintCredentialId] = useState<string | null>(null);
-  const [fingerprintPublicKey, setFingerprintPublicKey] = useState<string | null>(null);
-  const [isRegisteringFingerprint, setIsRegisteringFingerprint] = useState(false);
-  const [courses, setCourses] = useState([{ courseName: '', schedule: '', room: '' }]);
+  const [courses, setCourses] = useState([{ courseName: '', day: '', schedule: '', room: '' }]);
 
   const maxCoursesReached = courses.length >= 12;
 
@@ -92,11 +115,6 @@ export function StudentRegistrationForm() {
       return;
     }
 
-    if (!fingerprintRegistered || !fingerprintCredentialId) {
-      setError('Please register your fingerprint before submitting.');
-      return;
-    }
-
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail.includes('phinmaed')) {
       setError('Please use your PHINMAED email address.');
@@ -119,10 +137,25 @@ export function StudentRegistrationForm() {
     }
 
     const hasIncompleteCourse = courses.some(
-      (course) => !course.courseName.trim() || !course.schedule.trim() || !course.room.trim()
+      (course) =>
+        !course.courseName.trim() ||
+        !course.day.trim() ||
+        !course.schedule.trim() ||
+        !course.room.trim()
     );
     if (hasIncompleteCourse) {
-      setError('Each course must include course name, time schedule, and room assigned.');
+      setError('Each course must include subject, day, time schedule, and room assigned.');
+      return;
+    }
+
+    const subjectCounts = courses.reduce<Record<string, number>>((acc, c) => {
+      const s = c.courseName.trim();
+      if (s) acc[s] = (acc[s] ?? 0) + 1;
+      return acc;
+    }, {});
+    const hasDuplicateSubject = Object.values(subjectCounts).some((n: number) => n > 1);
+    if (hasDuplicateSubject) {
+      setError('Each subject can only be selected once. Please choose a different subject for any duplicate.');
       return;
     }
 
@@ -142,11 +175,9 @@ export function StudentRegistrationForm() {
           block,
           email: normalizedEmail,
           password,
-          webauthnCredentialId: fingerprintCredentialId,
-          webauthnPublicKey: fingerprintPublicKey,
           comCourses: courses.map((course) => ({
             courseName: course.courseName.trim(),
-            schedule: course.schedule.trim(),
+            schedule: `${course.day.trim()} ${course.schedule.trim()}`.trim(),
             room: course.room.trim(),
           })),
         }),
@@ -173,7 +204,7 @@ export function StudentRegistrationForm() {
 
   const handleCourseChange = (
     index: number,
-    field: 'courseName' | 'schedule' | 'room',
+    field: 'courseName' | 'day' | 'schedule' | 'room',
     value: string
   ) => {
     setCourses((prev) =>
@@ -185,150 +216,12 @@ export function StudentRegistrationForm() {
 
   const handleAddCourse = () => {
     if (maxCoursesReached) return;
-    setCourses((prev) => [...prev, { courseName: '', schedule: '', room: '' }]);
+    setCourses((prev) => [...prev, { courseName: '', day: '', schedule: '', room: '' }]);
   };
 
   const handleRemoveCourse = (index: number) => {
     if (courses.length === 1) return;
     setCourses((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleRegisterFingerprint = async () => {
-    if (!email || !name) {
-      setError('Please fill in your name and email first before registering fingerprint.');
-      return;
-    }
-
-    // Check for WebAuthn support
-    if (typeof window === 'undefined' || !window.PublicKeyCredential) {
-      setError('Fingerprint authentication is not supported in this browser. Please use Chrome, Safari, Edge, or Firefox on a device with fingerprint sensor.');
-      return;
-    }
-
-    // Check for secure context (HTTPS required for WebAuthn)
-    if (!window.isSecureContext) {
-      setError('Fingerprint authentication requires a secure connection (HTTPS). Please ensure you are accessing the site via HTTPS.');
-      return;
-    }
-
-    // Check if platform authenticator is available
-    try {
-      const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-      if (!available) {
-        setError('Platform authenticator (fingerprint sensor) is not available on this device. Please ensure your device has fingerprint/FaceID/TouchID enabled and unlocked.');
-        return;
-      }
-    } catch (err) {
-      console.warn('Could not check platform authenticator availability:', err);
-      // Continue anyway - some browsers might not support this check
-    }
-
-    setIsRegisteringFingerprint(true);
-    setError(null);
-
-    try {
-      // Generate a user ID (use email as base)
-      const userId = new TextEncoder().encode(email.toLowerCase().trim());
-      const userName = email.toLowerCase().trim();
-      const displayName = name.trim();
-
-      // Create credential using WebAuthn API
-      // Use the domain without port for rp.id (required for WebAuthn)
-      const rpId = window.location.hostname.split(':')[0];
-      
-      const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: {
-          name: 'Attendance System',
-          id: rpId,
-        },
-        user: {
-          id: userId,
-          name: userName,
-          displayName: displayName,
-        },
-        pubKeyCredParams: [
-          { alg: -7, type: 'public-key' }, // ES256
-          { alg: -257, type: 'public-key' }, // RS256
-        ],
-        authenticatorSelection: {
-          authenticatorAttachment: 'platform', // Use built-in fingerprint sensor
-          userVerification: 'required',
-        },
-        timeout: 60000,
-        attestation: 'direct',
-      };
-
-      let credential: PublicKeyCredential;
-      try {
-        credential = await navigator.credentials.create({
-          publicKey: publicKeyCredentialCreationOptions,
-        }) as PublicKeyCredential;
-      } catch (createError: any) {
-        if (createError.name === 'NotSupportedError') {
-          throw new Error('Your browser does not support fingerprint authentication. Please use Chrome, Safari, or Edge.');
-        } else if (createError.name === 'InvalidStateError') {
-          throw new Error('Fingerprint is already registered for this account.');
-        } else if (createError.name === 'NotAllowedError') {
-          throw new Error('Fingerprint registration was cancelled or not allowed. Please try again and allow the fingerprint prompt.');
-        } else if (createError.name === 'SecurityError') {
-          throw new Error('Security error: Please ensure you are accessing the site via HTTPS (secure connection).');
-        } else {
-          throw createError;
-        }
-      }
-
-      if (!credential) {
-        throw new Error('Fingerprint registration was cancelled or failed.');
-      }
-
-      const response = credential.response as AuthenticatorAttestationResponse;
-      
-      // Convert ArrayBuffer to base64
-      const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        return btoa(binary);
-      };
-
-      const credentialId = arrayBufferToBase64(credential.rawId);
-      const publicKey = arrayBufferToBase64(response.getPublicKey() || new ArrayBuffer(0));
-      const clientDataJSON = arrayBufferToBase64(response.clientDataJSON);
-      const attestationObject = arrayBufferToBase64(response.attestationObject);
-
-      setFingerprintCredentialId(credentialId);
-      setFingerprintPublicKey(publicKey);
-      setFingerprintRegistered(true);
-      setSuccessMessage('Fingerprint registered successfully! You can now use it for attendance.');
-    } catch (err: any) {
-      console.error('Fingerprint registration error:', err);
-      
-      let errorMessage = 'Failed to register fingerprint. ';
-      
-      if (err.name === 'NotAllowedError') {
-        errorMessage = 'Fingerprint registration was cancelled or not allowed. Please try again and allow the fingerprint prompt when it appears.';
-      } else if (err.name === 'NotSupportedError') {
-        errorMessage = 'Fingerprint authentication is not supported. Please use Chrome, Safari, or Edge on a device with fingerprint/FaceID/TouchID.';
-      } else if (err.name === 'SecurityError') {
-        errorMessage = 'Security error: Please ensure you are accessing the site via HTTPS (secure connection).';
-      } else if (err.name === 'InvalidStateError') {
-        errorMessage = 'Fingerprint is already registered. If you need to re-register, please contact support.';
-      } else if (err.message) {
-        errorMessage = err.message;
-      } else {
-        errorMessage += 'Please ensure:\n- You are using HTTPS\n- Your browser supports WebAuthn (Chrome, Safari, Edge)\n- Your device has fingerprint/FaceID/TouchID enabled\n- You allow the fingerprint prompt';
-      }
-      
-      setError(errorMessage);
-      setFingerprintRegistered(false);
-      setFingerprintCredentialId(null);
-      setFingerprintPublicKey(null);
-    } finally {
-      setIsRegisteringFingerprint(false);
-    }
   };
 
   if (tokenValid === false && !tokenFromUrl) {
@@ -517,9 +410,13 @@ export function StudentRegistrationForm() {
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="••••••••"
                 required
+                minLength={8}
                 className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
               />
             </div>
+            <p className="mt-1 text-xs text-neutral-500">
+              Min 8 chars, uppercase, lowercase, number, special character (!@#$%^&*)
+            </p>
           </div>
 
           <div>
@@ -538,77 +435,6 @@ export function StudentRegistrationForm() {
                 className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Fingerprint Registration
-            </label>
-            <div className="space-y-3">
-              {fingerprintRegistered ? (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                        <Fingerprint className="w-5 h-5 text-emerald-700" />
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-emerald-900">Fingerprint Registered</p>
-                      <p className="text-xs text-emerald-700">Your fingerprint is ready for attendance verification.</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                  <p className="text-sm text-neutral-700 mb-3">
-                    Register your fingerprint using your phone's fingerprint sensor (TouchID, FaceID, or Android fingerprint). This will be used for attendance verification on IoT scanners.
-                  </p>
-                  {typeof window !== 'undefined' && window.PublicKeyCredential && window.isSecureContext ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleRegisterFingerprint}
-                        disabled={isRegisteringFingerprint || !name || !email}
-                        className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isRegisteringFingerprint ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            <span>Registering fingerprint...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Fingerprint className="w-4 h-4" />
-                            <span>Register Fingerprint</span>
-                          </>
-                        )}
-                      </button>
-                      {(!name || !email) && (
-                        <p className="mt-2 text-xs text-amber-600">
-                          Please fill in your name and email first.
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p className="text-xs text-amber-800 font-medium mb-1">Requirements:</p>
-                      <ul className="text-xs text-amber-700 space-y-1 list-disc list-inside">
-                        <li>Use Chrome, Safari, or Edge browser</li>
-                        <li>Access via HTTPS (secure connection)</li>
-                        <li>Device must have fingerprint/FaceID/TouchID enabled</li>
-                        <li>Allow browser permissions when prompted</li>
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <p className="mt-2 text-xs text-neutral-500">
-              {fingerprintRegistered 
-                ? 'Your fingerprint credential is stored securely. You can use it for attendance on IoT scanners.'
-                : 'Touch the button above and follow the prompts to register your fingerprint using your phone\'s fingerprint sensor (TouchID, FaceID, or Android fingerprint).'}
-            </p>
           </div>
 
           <div className="space-y-4">
@@ -645,19 +471,58 @@ export function StudentRegistrationForm() {
 
                 <div>
                   <label htmlFor={`com-course-${index}`} className="block text-sm font-medium text-neutral-700 mb-2">
-                    Course Name
+                    Subject
                   </label>
                   <div className="relative">
-                    <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                    <input
+                    <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10" />
+                    <select
                       id={`com-course-${index}`}
-                      type="text"
                       value={course.courseName}
                       onChange={(e) => handleCourseChange(index, 'courseName', e.target.value)}
-                      placeholder="BSIT 2A"
                       required
-                      className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
-                    />
+                      className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
+                    >
+                      <option value="">Select subject</option>
+                      {(() => {
+                        const takenByOther = courses
+                          .filter((_, i) => i !== index)
+                          .map((c) => c.courseName.trim())
+                          .filter(Boolean);
+                        return SUBJECT_OPTIONS.filter(
+                          (subject) => subject === course.courseName || !takenByOther.includes(subject)
+                        ).map((subject) => (
+                          <option key={subject} value={subject}>
+                            {subject}
+                          </option>
+                        ));
+                      })()}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor={`com-day-${index}`} className="block text-sm font-medium text-neutral-700 mb-2">
+                    Day
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10">
+                      {/* simple circle to align with other icons */}
+                      <span className="inline-block w-3 h-3 rounded-full border border-neutral-300" />
+                    </div>
+                    <select
+                      id={`com-day-${index}`}
+                      value={course.day}
+                      onChange={(e) => handleCourseChange(index, 'day', e.target.value)}
+                      required
+                      className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
+                    >
+                      <option value="">Select day</option>
+                      {DAY_OPTIONS.map((day) => (
+                        <option key={day} value={day}>
+                          {day}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -666,16 +531,21 @@ export function StudentRegistrationForm() {
                     Time Schedule
                   </label>
                   <div className="relative">
-                    <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                    <input
+                    <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10" />
+                    <select
                       id={`com-schedule-${index}`}
-                      type="text"
                       value={course.schedule}
                       onChange={(e) => handleCourseChange(index, 'schedule', e.target.value)}
-                      placeholder="Mon/Wed 8:00 AM - 10:00 AM"
                       required
-                      className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
-                    />
+                      className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
+                    >
+                      <option value="">Select time schedule</option>
+                      {TIME_SCHEDULE_OPTIONS.map((slot) => (
+                        <option key={slot} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

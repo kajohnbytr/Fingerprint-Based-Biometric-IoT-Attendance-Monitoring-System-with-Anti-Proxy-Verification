@@ -12,6 +12,7 @@ import {
   InviteStudents,
   Overview,
   Reports,
+  Schedule,
   Settings,
   StudentAttendance,
   StudentProfile,
@@ -28,6 +29,7 @@ import {
   UserCircle,
   MessageSquareWarning,
   Link2,
+  CalendarDays,
 } from 'lucide-react';
 
 import { API_BASE_URL } from './config';
@@ -160,7 +162,7 @@ export default function App() {
       ],
       admin: [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-        { id: 'reports', label: 'Class Reports', icon: FileText },
+        { id: 'schedule', label: 'Class Schedule', icon: CalendarDays },
         { id: 'invite-students', label: 'Invite Students', icon: Link2 },
         { id: 'archive-requests', label: 'Archive Requests', icon: ClipboardList },
       ],
@@ -178,11 +180,6 @@ export default function App() {
     []
   );
 
-  const allowedViews = useMemo(
-    () => new Set(navItemsByRole[role].map((item) => item.id)),
-    [navItemsByRole, role]
-  );
-
   const viewRoutesByRole = useMemo<Record<UserRole, ViewRoute[]>>(
     () => ({
       student: [
@@ -192,6 +189,7 @@ export default function App() {
       ],
       admin: [
         { id: 'overview', path: '/admin/overview', element: <Overview role="admin" /> },
+        { id: 'schedule', path: '/admin/schedule', element: <Schedule role="admin" /> },
         { id: 'reports', path: '/admin/reports', element: <Reports role={role} /> },
         { id: 'invite-students', path: '/admin/invite-students', element: <InviteStudents /> },
         {
@@ -226,6 +224,11 @@ export default function App() {
       ],
     }),
     [isMaintenanceMode, role]
+  );
+
+  const allowedViews = useMemo(
+    () => new Set(viewRoutesByRole[role].map((r) => r.id)),
+    [viewRoutesByRole, role]
   );
 
   const defaultPath = viewRoutesByRole[role][0]?.path ?? '/';
@@ -459,6 +462,10 @@ export default function App() {
                 />
               }
             />
+            {/* Redirect protected paths to the right login when not authenticated */}
+            <Route path="/super-admin/*" element={<Navigate to="/login/super-admin" replace />} />
+            <Route path="/admin/*" element={<Navigate to="/login/admin" replace />} />
+            <Route path="/student/*" element={<Navigate to="/login/student" replace />} />
             <Route path="*" element={<NotFound isAuthenticated={false} />} />
           </Routes>
         ) : (

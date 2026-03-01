@@ -9,3 +9,4 @@ export { StudentProfile } from './StudentProfile';
 export { AppReports } from './AppReports';
 export { ArchiveRequests } from './ArchiveRequests';
 export { InviteStudents } from './InviteStudents';
+export { Schedule } from './Schedule';

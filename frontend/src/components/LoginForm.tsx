@@ -4,6 +4,22 @@ import type { UserRole } from '../types/rbac';
 
 import { API_BASE_URL } from '../config';
 
+async function safeJson(response: Response): Promise<any> {
+  const text = await response.text();
+  if (!text) {
+    throw new Error('Backend did not respond. Is the server running on port 5000?');
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      response.ok
+        ? 'Invalid response from server.'
+        : `Server error (${response.status}). Backend may be down or returning an error page. Start it with: npm run dev (in backend folder).`
+    );
+  }
+}
+
 export function LoginForm({
   onLogin,
   onForgot,
@@ -61,7 +77,7 @@ export function LoginForm({
         body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
+      const data = await safeJson(response);
 
       if (!response.ok) {
         throw new Error(data.error || 'Login failed');
@@ -71,7 +87,14 @@ export function LoginForm({
         onLogin(data.user as { email: string; role: UserRole });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during login');
+      let message = 'An error occurred during login';
+      if (err instanceof Error) {
+        message =
+          err.message === 'Failed to fetch'
+            ? 'Cannot reach server. Start the backend (npm run dev in backend folder) and ensure it runs on port 5000.'
+            : err.message;
+      }
+      setError(message);
       setIsLoading(false);
     }
   };

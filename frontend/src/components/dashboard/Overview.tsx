@@ -84,9 +84,17 @@ export function Overview({ role = 'admin' }: { role?: UserRole }) {
       setError(null);
       try {
         const res = await fetch(`${API_BASE_URL}/api/admin/overview`, { credentials: 'include' });
-        const data = await res.json();
+        const text = await res.text();
+        const data = text ? (() => { try { return JSON.parse(text); } catch { return null; } })() : null;
+        if (!data) throw new Error(res.ok ? 'Invalid response from server' : 'Could not load overview');
         if (!res.ok) throw new Error(data.error || 'Failed to load overview');
-        setStats(data.stats || {});
+        const rawStats = data.stats || {};
+        setStats({
+          totalStudents: typeof rawStats.totalStudents === 'number' ? rawStats.totalStudents : 0,
+          presentToday: typeof rawStats.presentToday === 'number' ? rawStats.presentToday : 0,
+          absentToday: typeof rawStats.absentToday === 'number' ? rawStats.absentToday : 0,
+          lateToday: typeof rawStats.lateToday === 'number' ? rawStats.lateToday : 0,
+        });
         setSystemStats(data.systemStats || null);
 
         if (data.attendanceTrendsWeekday && Array.isArray(data.attendanceTrendsWeekday) && data.attendanceTrendsWeekday.length >= 5) {

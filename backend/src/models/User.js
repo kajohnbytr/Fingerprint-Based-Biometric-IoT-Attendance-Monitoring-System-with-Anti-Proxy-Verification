@@ -86,6 +86,12 @@ const userSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    // For teacher/admin accounts: which blocks/sections they are allowed to manage.
+    // Example: ['2BSIT-02', '3BSIT-SD-01']
+    handledBlocks: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

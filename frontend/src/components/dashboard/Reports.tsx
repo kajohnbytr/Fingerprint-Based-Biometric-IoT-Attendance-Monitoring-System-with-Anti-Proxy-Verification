@@ -1,4 +1,5 @@
 import React, { Fragment, useEffect, useState } from 'react';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Download, 
   Filter, 
@@ -20,20 +21,47 @@ import type { UserRole } from '../../types/rbac';
 
 import { API_BASE_URL } from '../../config';
 
+const SUBJECT_OPTIONS = ['ITE 384', 'ITE 385', 'ITE 401', 'ITE 293', 'ITE 370', 'ITE 309', 'SSP 008'];
+const DAY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const TIME_SCHEDULE_OPTIONS = [
+  '7:30 AM - 9:00 AM',
+  '9:00 AM - 10:30 AM',
+  '10:30 AM - 12:00 PM',
+  '12:00 PM - 1:30 PM',
+  '1:30 PM - 3:00 PM',
+  '3:00 PM - 4:30 PM',
+  '4:30 PM - 6:00 PM',
+];
+
 type ReportRow = { id: string; date: string; class: string; totalStudents: number; present: number; absent: number; late: number; status: string };
 type BlockStudent = { id: string; name: string; idNumber: string; email: string; block: string; status: string };
 
-function downloadCsv(rows: ReportRow[]) {
-  const headers = [
-    'Date',
-    'Year / Block',
-    'Total Students',
-    'Present',
-    'Absent',
-    'Late',
-    'Attendance Rate',
-    'Status',
-  ];
+async function downloadCsv(
+  rows: ReportRow[],
+  filters: { subject: string; day: string; timeSlot: string }
+) {
+  const allStudents: BlockStudent[] = [];
+
+  for (const row of rows) {
+    const params = new URLSearchParams({ date: row.date, block: row.class });
+    if (filters.subject) params.set('subject', filters.subject);
+    if (filters.day) params.set('day', filters.day);
+    if (filters.timeSlot) params.set('timeSlot', filters.timeSlot);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/reports/block-details?${params.toString()}`, {
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) continue;
+      const students = (data.students || []) as BlockStudent[];
+      allStudents.push(...students);
+    } catch {
+      // ignore per-row errors
+    }
+  }
+
+  const headers = ['Name', 'ID Number', 'Email', 'Block', 'Status'];
 
   const escapeCsv = (value: string | number) => {
     const text = String(value);
@@ -45,28 +73,18 @@ function downloadCsv(rows: ReportRow[]) {
 
   const lines = [
     headers.map(escapeCsv).join(','),
-    ...rows.map((row) => {
-      const rate = row.totalStudents ? Math.round((row.present / row.totalStudents) * 100) : 0;
-      return [
-        row.date,
-        row.class,
-        row.totalStudents,
-        row.present,
-        row.absent,
-        row.late,
-        `${rate}%`,
-        row.status,
-      ]
+    ...allStudents.map((s) =>
+      [s.name || '—', s.idNumber || '—', s.email || '—', s.block || '—', s.status || '—']
         .map(escapeCsv)
-        .join(',');
-    }),
+        .join(',')
+    ),
   ];
 
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `attendance-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `attendance-students-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -74,6 +92,10 @@ function downloadCsv(rows: ReportRow[]) {
 }
 
 export function Reports({ role }: { role: UserRole }) {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const blockFromUrl = searchParams.get('block') || undefined;
   const [reportData, setReportData] = useState<ReportRow[]>([]);
   const todayStr = () => {
     const d = new Date();
@@ -86,6 +108,9 @@ export function Reports({ role }: { role: UserRole }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [blockStudents, setBlockStudents] = useState<Record<string, BlockStudent[]>>({});
   const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
+  const [subjectFilter, setSubjectFilter] = useState('');
+  const [dayFilter, setDayFilter] = useState('');
+  const [timeFilter, setTimeFilter] = useState('');
 
   const fetchBlockDetails = async (row: ReportRow) => {
     const key = row.id;
@@ -93,6 +118,9 @@ export function Reports({ role }: { role: UserRole }) {
     setLoadingDetails((p) => ({ ...p, [key]: true }));
     try {
       const params = new URLSearchParams({ date: row.date, block: row.class });
+      if (subjectFilter) params.set('subject', subjectFilter);
+      if (dayFilter) params.set('day', dayFilter);
+      if (timeFilter) params.set('timeSlot', timeFilter);
       const res = await fetch(`${API_BASE_URL}/api/admin/reports/block-details?${params}`, { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load');
@@ -124,6 +152,10 @@ export function Reports({ role }: { role: UserRole }) {
     const fetchReports = async () => {
       try {
         const params = new URLSearchParams({ startDate, endDate });
+        if (blockFromUrl) params.set('block', blockFromUrl);
+        if (subjectFilter) params.set('subject', subjectFilter);
+        if (dayFilter) params.set('day', dayFilter);
+        if (timeFilter) params.set('timeSlot', timeFilter);
         const res = await fetch(`${API_BASE_URL}/api/admin/reports?${params}`, {
           credentials: 'include',
           signal: ac.signal,
@@ -156,7 +188,7 @@ export function Reports({ role }: { role: UserRole }) {
     };
     fetchReports();
     return () => ac.abort();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, blockFromUrl, subjectFilter, dayFilter, timeFilter]);
 
   const title = role === 'admin' ? 'Class Reports' : 'Reports & Analytics';
   const description =
@@ -170,11 +202,20 @@ export function Reports({ role }: { role: UserRole }) {
       <div>
         <h1 className="text-2xl font-bold text-neutral-900">{title}</h1>
         <p className="text-neutral-500">{description}</p>
+        {blockFromUrl && (
+          <p className="mt-2 text-sm text-emerald-700">
+            Showing reports for block: <strong>{blockFromUrl}</strong>
+            {' · '}
+            <button type="button" onClick={() => navigate(location.pathname)} className="underline hover:no-underline">
+              Show all blocks
+            </button>
+          </p>
+        )}
       </div>
 
       {/* Filters & Actions */}
       <div className="bg-white p-4 rounded-lg border border-neutral-200 shadow-sm flex flex-col md:flex-row gap-4 items-start md:items-end">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full md:w-auto flex-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full md:w-auto flex-1">
           <div className="space-y-2">
             <label className="text-sm font-medium text-neutral-700">Date Range</label>
             <div className="flex items-center gap-2">
@@ -192,6 +233,50 @@ export function Reports({ role }: { role: UserRole }) {
               <option value="student">Student Performance</option>
             </select>
           </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-neutral-700">Subject</label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+            >
+              <option value="">All subjects</option>
+              {SUBJECT_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-neutral-700">Day & Time</label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={dayFilter}
+                onChange={(e) => setDayFilter(e.target.value)}
+              >
+                <option value="">All days</option>
+                {DAY_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value)}
+              >
+                <option value="">All times</option>
+                {TIME_SCHEDULE_OPTIONS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
         
         <div className="flex items-center gap-2 w-full md:w-auto">
@@ -202,7 +287,13 @@ export function Reports({ role }: { role: UserRole }) {
           {role !== 'student' && (
             <Button
               className="bg-neutral-900 hover:bg-neutral-800 gap-2 flex-1 md:flex-none"
-              onClick={() => downloadCsv(reportData)}
+              onClick={() =>
+                downloadCsv(reportData, {
+                  subject: subjectFilter,
+                  day: dayFilter,
+                  timeSlot: timeFilter,
+                })
+              }
             >
               <Download className="w-4 h-4" />
               Export CSV

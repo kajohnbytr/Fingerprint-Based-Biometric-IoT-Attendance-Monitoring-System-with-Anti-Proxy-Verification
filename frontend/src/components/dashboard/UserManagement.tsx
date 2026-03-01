@@ -41,19 +41,28 @@ import { Label } from "../ui/label";
 
 import { API_BASE_URL } from '../../config';
 
-type UserRow = { id: string; name: string; email: string; role: string; roleLabel: string; department: string; status: string };
+type UserRow = { id: string; name: string; email: string; role: string; roleLabel: string; department: string; status: string; handledBlocks?: string[] };
 
 export function UserManagement() {
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [availableBlocks, setAvailableBlocks] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [isEditUserOpen, setIsEditUserOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addPassword, setAddPassword] = useState('');
   const [addRole, setAddRole] = useState('student');
+  const [addHandledBlocks, setAddHandledBlocks] = useState<string[]>([]);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState('admin');
+  const [editHandledBlocks, setEditHandledBlocks] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const fetchUsers = async () => {
     try {
@@ -69,9 +78,22 @@ export function UserManagement() {
     }
   };
 
+  const fetchAvailableBlocks = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/available-blocks`, { credentials: 'include' });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.blocks)) {
+        setAvailableBlocks(data.blocks);
+      }
+    } catch (err) {
+      console.error('Failed to fetch available blocks:', err);
+    }
+  };
+
   useEffect(() => {
     setIsLoading(true);
     fetchUsers();
+    fetchAvailableBlocks();
   }, [searchTerm]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -83,11 +105,15 @@ export function UserManagement() {
     }
     setIsCreating(true);
     try {
+      const payload: any = { name: addName.trim(), email: addEmail.trim(), password: addPassword, role: addRole };
+      if (addRole === 'admin' && addHandledBlocks.length > 0) {
+        payload.handledBlocks = addHandledBlocks;
+      }
       const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name: addName.trim(), email: addEmail.trim(), password: addPassword, role: addRole }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create user');
@@ -96,11 +122,66 @@ export function UserManagement() {
       setAddEmail('');
       setAddPassword('');
       setAddRole('student');
+      setAddHandledBlocks([]);
       fetchUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create user');
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleEditClick = (user: UserRow) => {
+    setEditingUser(user);
+    setEditName(user.name);
+    setEditEmail(user.email);
+    setEditRole(user.role);
+    setEditHandledBlocks(user.handledBlocks || []);
+    setIsEditUserOpen(true);
+    setError(null);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setError(null);
+    setIsUpdating(true);
+    try {
+      const payload: any = { name: editName.trim(), email: editEmail.trim(), role: editRole };
+      if (editRole === 'admin') {
+        payload.handledBlocks = editHandledBlocks;
+      }
+      const res = await fetch(`${API_BASE_URL}/api/admin/users/${editingUser.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update user');
+      setIsEditUserOpen(false);
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const toggleBlock = (block: string, isAdd: boolean) => {
+    if (isAdd) {
+      setAddHandledBlocks((prev) => (prev.includes(block) ? prev : [...prev, block]));
+    } else {
+      setEditHandledBlocks((prev) => (prev.includes(block) ? prev : [...prev, block]));
+    }
+  };
+
+  const removeBlock = (block: string, isAdd: boolean) => {
+    if (isAdd) {
+      setAddHandledBlocks((prev) => prev.filter((b) => b !== block));
+    } else {
+      setEditHandledBlocks((prev) => prev.filter((b) => b !== block));
     }
   };
 
@@ -146,16 +227,56 @@ export function UserManagement() {
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="password" className="text-right">Password</Label>
-                    <Input id="password" type="password" placeholder="••••••••" className="col-span-3" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} required />
+                    <div className="col-span-3 space-y-1">
+                      <Input id="password" type="password" placeholder="••••••••" minLength={8} value={addPassword} onChange={(e) => setAddPassword(e.target.value)} required />
+                      <p className="text-xs text-muted-foreground">Min 8 chars, uppercase, lowercase, number, special char</p>
+                    </div>
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="role" className="text-right">Role</Label>
-                    <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
+                    <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={addRole} onChange={(e) => { setAddRole(e.target.value); if (e.target.value !== 'admin') setAddHandledBlocks([]); }}>
                       <option value="student">Student</option>
                       <option value="admin">Admin (Teacher)</option>
                       <option value="super_admin">Super Admin (Developer)</option>
                     </select>
                   </div>
+                  {addRole === 'admin' && (
+                    <div className="grid grid-cols-4 items-start gap-4">
+                      <Label className="text-right pt-2">Handled Blocks</Label>
+                      <div className="col-span-3 space-y-2">
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {addHandledBlocks.map((block) => (
+                            <Badge key={block} variant="default" className="bg-emerald-100 text-emerald-700">
+                              {block}
+                              <button
+                                type="button"
+                                onClick={() => removeBlock(block, true)}
+                                className="ml-1 hover:text-emerald-900"
+                              >
+                                ×
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                        <select
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value && !addHandledBlocks.includes(e.target.value)) {
+                              toggleBlock(e.target.value, true);
+                            }
+                            e.target.value = '';
+                          }}
+                        >
+                          <option value="">Select a block...</option>
+                          {availableBlocks.filter((b) => !addHandledBlocks.includes(b)).map((block) => (
+                            <option key={block} value={block}>{block}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-neutral-500">Select blocks this teacher will manage</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={isCreating}>{isCreating ? 'Creating...' : 'Create Account'}</Button>
@@ -165,6 +286,80 @@ export function UserManagement() {
           </Dialog>
         </div>
       </div>
+
+      {/* Edit User Dialog */}
+      <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <form onSubmit={handleUpdateUser}>
+            <DialogHeader>
+              <DialogTitle>Edit User</DialogTitle>
+              <DialogDescription>
+                Update user information and assigned blocks.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-name" className="text-right">Name</Label>
+                <Input id="edit-name" placeholder="John Doe" className="col-span-3" value={editName} onChange={(e) => setEditName(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-email" className="text-right">Email</Label>
+                <Input id="edit-email" type="email" placeholder="john@university.edu" className="col-span-3" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-role" className="text-right">Role</Label>
+                <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={editRole} onChange={(e) => { setEditRole(e.target.value); if (e.target.value !== 'admin') setEditHandledBlocks([]); }}>
+                  <option value="student">Student</option>
+                  <option value="admin">Admin (Teacher)</option>
+                  <option value="super_admin">Super Admin (Developer)</option>
+                </select>
+              </div>
+              {editRole === 'admin' && (
+                <div className="grid grid-cols-4 items-start gap-4">
+                  <Label className="text-right pt-2">Handled Blocks</Label>
+                  <div className="col-span-3 space-y-2">
+                    <div className="flex flex-wrap gap-2 mb-2 min-h-[2rem]">
+                      {editHandledBlocks.map((block) => (
+                        <Badge key={block} variant="default" className="bg-emerald-100 text-emerald-700">
+                          {block}
+                          <button
+                            type="button"
+                            onClick={() => removeBlock(block, false)}
+                            className="ml-1 hover:text-emerald-900"
+                          >
+                            ×
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value && !editHandledBlocks.includes(e.target.value)) {
+                          toggleBlock(e.target.value, false);
+                        }
+                        e.target.value = '';
+                      }}
+                    >
+                      <option value="">Select a block...</option>
+                      {availableBlocks.filter((b) => !editHandledBlocks.includes(b)).map((block) => (
+                        <option key={block} value={block}>{block}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-neutral-500">Select blocks this teacher will manage</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditUserOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={isUpdating}>{isUpdating ? 'Updating...' : 'Update User'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -189,6 +384,7 @@ export function UserManagement() {
               <TableHead>User</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Department</TableHead>
+              <TableHead>Handled Blocks</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -196,11 +392,11 @@ export function UserManagement() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-neutral-500 py-8">Loading users...</TableCell>
+                <TableCell colSpan={6} className="text-center text-neutral-500 py-8">Loading users...</TableCell>
               </TableRow>
             ) : filteredUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-neutral-500 py-8">No users found.</TableCell>
+                <TableCell colSpan={6} className="text-center text-neutral-500 py-8">No users found.</TableCell>
               </TableRow>
             ) : filteredUsers.map((user) => (
               <TableRow key={user.id}>
@@ -228,6 +424,24 @@ export function UserManagement() {
                 </TableCell>
                 <TableCell>{user.department}</TableCell>
                 <TableCell>
+                  {user.role === 'admin' ? (
+                    user.handledBlocks && user.handledBlocks.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.handledBlocks.slice(0, 2).map((block) => (
+                          <Badge key={block} variant="outline" className="text-xs">{block}</Badge>
+                        ))}
+                        {user.handledBlocks.length > 2 && (
+                          <Badge variant="outline" className="text-xs">+{user.handledBlocks.length - 2}</Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-neutral-400">None</span>
+                    )
+                  ) : (
+                    <span className="text-xs text-neutral-400">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
                   <Badge variant={user.status === 'Active' ? 'default' : 'secondary'} className={user.status === 'Active' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : ''}>
                     {user.status}
                   </Badge>
@@ -241,7 +455,7 @@ export function UserManagement() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem className="gap-2">
+                      <DropdownMenuItem className="gap-2" onClick={() => handleEditClick(user)}>
                         <Pencil className="w-4 h-4" /> Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem className="text-amber-600 gap-2">

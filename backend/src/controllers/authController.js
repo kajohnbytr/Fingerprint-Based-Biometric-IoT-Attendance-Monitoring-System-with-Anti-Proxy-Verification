@@ -4,6 +4,7 @@ const User = require('../models/User');
 const InviteToken = require('../models/InviteToken');
 const AuditLog = require('../models/AuditLog');
 const SystemSettings = require('../models/SystemSettings');
+const { validatePassword } = require('../utils/passwordPolicy');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secretkey';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -20,9 +21,21 @@ const validateInvite = async (req, res) => {
     const { token } = req.params;
     if (!token) return res.status(400).json({ valid: false, error: 'Token required' });
 
-    const invite = await InviteToken.findOne({ token, used: false });
-    if (!invite) return res.json({ valid: false, error: 'Invalid or expired invite link' });
-    if (new Date() > invite.expiresAt) return res.json({ valid: false, error: 'Invite link has expired' });
+    const invite = await InviteToken.findOne({ token });
+    if (!invite || invite.used) {
+      return res.json({ valid: false, error: 'Invalid or expired invite link' });
+    }
+
+    const now = new Date();
+    if (now > invite.expiresAt) {
+      return res.json({ valid: false, error: 'Invite link has expired' });
+    }
+
+    const maxUses = typeof invite.maxUses === 'number' && invite.maxUses > 0 ? invite.maxUses : 1;
+    const usedCount = typeof invite.usedCount === 'number' ? invite.usedCount : 0;
+    if (usedCount >= maxUses) {
+      return res.json({ valid: false, error: 'Invite link has reached its maximum number of registrations' });
+    }
 
     return res.json({
       valid: true,
@@ -57,15 +70,35 @@ const register = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
+    const pwdCheck = validatePassword(password);
+    if (!pwdCheck.valid) {
+      return res.status(400).json({ error: pwdCheck.error });
+    }
+
     const normalizedRole = role || 'student';
 
+    let inviteDoc = null;
     if (normalizedRole === 'student') {
-      if (!inviteToken) return res.status(400).json({ error: 'Registration requires a valid invite link from your admin or teacher' });
-      const invite = await InviteToken.findOne({ token: inviteToken, used: false });
-      if (!invite) return res.status(400).json({ error: 'Invalid or expired invite link. Please request a new one.' });
-      if (new Date() > invite.expiresAt) return res.status(400).json({ error: 'Invite link has expired. Please request a new one.' });
-      if (invite.email && invite.email !== email.toLowerCase().trim()) {
+      if (!inviteToken) {
+        return res.status(400).json({ error: 'Registration requires a valid invite link from your admin or teacher' });
+      }
+
+      inviteDoc = await InviteToken.findOne({ token: inviteToken });
+      if (!inviteDoc || inviteDoc.used) {
+        return res.status(400).json({ error: 'Invalid or expired invite link. Please request a new one.' });
+      }
+      const now = new Date();
+      if (now > inviteDoc.expiresAt) {
+        return res.status(400).json({ error: 'Invite link has expired. Please request a new one.' });
+      }
+      if (inviteDoc.email && inviteDoc.email !== email.toLowerCase().trim()) {
         return res.status(400).json({ error: 'This invite link is for a different email address' });
+      }
+
+      const maxUses = typeof inviteDoc.maxUses === 'number' && inviteDoc.maxUses > 0 ? inviteDoc.maxUses : 1;
+      const usedCount = typeof inviteDoc.usedCount === 'number' ? inviteDoc.usedCount : 0;
+      if (usedCount >= maxUses) {
+        return res.status(400).json({ error: 'Invite link has reached its maximum number of registrations. Please request a new one.' });
       }
     }
 
@@ -150,11 +183,20 @@ const register = async (req, res) => {
       webauthnPublicKey: typeof webauthnPublicKey === 'string' ? webauthnPublicKey.trim() : '',
     });
 
-    if (normalizedRole === 'student' && inviteToken) {
-      await InviteToken.findOneAndUpdate(
-        { token: inviteToken },
-        { used: true, usedAt: new Date() }
-      );
+    if (normalizedRole === 'student' && inviteDoc) {
+      const maxUses = typeof inviteDoc.maxUses === 'number' && inviteDoc.maxUses > 0 ? inviteDoc.maxUses : 1;
+      const previousCount = typeof inviteDoc.usedCount === 'number' ? inviteDoc.usedCount : 0;
+      const newCount = previousCount + 1;
+
+      const update = {
+        usedCount: newCount,
+      };
+      if (newCount >= maxUses) {
+        update.used = true;
+        update.usedAt = new Date();
+      }
+
+      await InviteToken.updateOne({ _id: inviteDoc._id }, { $set: update });
     }
 
     res.status(201).json({
@@ -175,10 +217,32 @@ const login = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user) {
+      try {
+        await AuditLog.create({
+          action: 'User Login',
+          user: email,
+          details: 'Failed login - user not found',
+          status: 'Failed',
+          ip: req.ip || req.socket?.remoteAddress || '',
+        });
+      } catch (e) { /* ignore */ }
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!valid) {
+      try {
+        await AuditLog.create({
+          action: 'User Login',
+          user: user.email,
+          details: 'Failed login - invalid password',
+          status: 'Failed',
+          ip: req.ip || req.socket?.remoteAddress || '',
+        });
+      } catch (e) { /* ignore */ }
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const role = normalizeRole(user.roles);
 
@@ -201,10 +265,10 @@ const login = async (req, res) => {
       { expiresIn: JWT_EXPIRES_IN }
     );
 
-    /* COOKIE FIX — THIS WAS THE REAL PROBLEM */
+    const isProduction = process.env.NODE_ENV === 'production';
     res.cookie('token', token, {
       httpOnly: true,
-      secure: false,
+      secure: isProduction,
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
@@ -215,6 +279,7 @@ const login = async (req, res) => {
         user: user.email,
         details: 'Successful login',
         status: 'Success',
+        ip: req.ip || req.socket?.remoteAddress || '',
       });
     } catch (e) { /* ignore */ }
 
@@ -224,14 +289,21 @@ const login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Invalid credentials' }); // Generic error for security
   }
 };
 
 const me = async (req, res) => {
   try {
     const role = normalizeRole(req.user.roles);
-    res.json({ user: { email: req.user.email, role } });
+    const payload = { user: { email: req.user.email, role } };
+    if (role === 'admin' || role === 'super_admin') {
+      payload.user.name = req.user.name || '';
+      payload.user.handledBlocks = Array.isArray(req.user.handledBlocks)
+        ? req.user.handledBlocks.filter((b) => typeof b === 'string' && b.trim())
+        : [];
+    }
+    res.json(payload);
   } catch {
     res.status(500).json({ error: 'Failed to fetch user' });
   }

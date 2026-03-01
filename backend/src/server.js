@@ -7,6 +7,7 @@ const path = require('path');
 dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
 
 const connectDB = require('./config/db');
+const { applySecurity, apiRateLimiter, noSqlSanitize } = require('./middleware/security');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const studentRoutes = require('./routes/students');
@@ -14,6 +15,9 @@ const adminRoutes = require('./routes/admin');
 const iotRoutes = require('./routes/iot');
 
 const app = express();
+
+/* Security: Helmet, NoSQL injection protection */
+applySecurity(app);
 
 /* CORS — VERY IMPORTANT */
 const corsOrigins = [
@@ -40,11 +44,23 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+/* NoSQL injection protection - strips $ and . from user input */
+app.use(noSqlSanitize);
+
+/* Rate limiting - apply to API routes */
+app.use('/api', apiRateLimiter);
+
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/iot', iotRoutes);
+
+/* Ensure all errors return JSON (prevents "invalid response" on frontend) */
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
 
 const PORT = process.env.PORT || 5000;
 

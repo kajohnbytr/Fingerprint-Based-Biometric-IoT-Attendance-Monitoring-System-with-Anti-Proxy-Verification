@@ -4,8 +4,10 @@ const router = express.Router();
 const { authenticate, requireRole, requireSuperAdmin } = require('../middleware/auth');
 const {
   getOverview,
+  getScheduleSummary,
   getReports,
   getReportBlockDetails,
+  getAvailableBlocks,
   listArchiveRequests,
   createArchiveRequest,
   updateArchiveRequest,
@@ -24,12 +26,14 @@ router.use(authenticate);
 router.use(requireRole(['admin', 'super_admin']));
 
 router.get('/overview', getOverview);
+router.get('/schedule-summary', getScheduleSummary);
 router.get('/reports', getReports);
 router.get('/reports/block-details', getReportBlockDetails);
 router.get('/archive-requests', listArchiveRequests);
 router.post('/archive-requests', createArchiveRequest);
 router.patch('/archive-requests/:id', requireSuperAdmin, updateArchiveRequest);
 
+router.get('/available-blocks', requireSuperAdmin, getAvailableBlocks);
 router.get('/users', requireSuperAdmin, listUsers);
 router.post('/users', requireSuperAdmin, createUser);
 router.patch('/users/:id', requireSuperAdmin, updateUser);

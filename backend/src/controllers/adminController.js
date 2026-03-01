@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const { validatePassword } = require('../utils/passwordPolicy');
 const Attendance = require('../models/Attendance');
 const Report = require('../models/Report');
 const ArchiveRequest = require('../models/ArchiveRequest');
@@ -8,6 +9,15 @@ const SystemSettings = require('../models/SystemSettings');
 const InviteToken = require('../models/InviteToken');
 
 const trimIfString = (v) => (typeof v === 'string' ? v.trim() : '');
+
+const getHandledBlocksForUser = (user) => {
+  const isSuperAdmin = user?.roles?.includes?.('super_admin');
+  if (isSuperAdmin) return { isSuperAdmin: true, blocks: [] };
+
+  const rawBlocks = Array.isArray(user?.handledBlocks) ? user.handledBlocks : [];
+  const blocks = rawBlocks.map((b) => trimIfString(b)).filter(Boolean);
+  return { isSuperAdmin: false, blocks };
+};
 
 const logAudit = async (action, user, details, status = 'Success') => {
   try {
@@ -35,10 +45,17 @@ const getOverview = async (req, res) => {
     const todayEnd = new Date(todayStart);
     todayEnd.setDate(todayEnd.getDate() + 1);
 
+    const { isSuperAdmin: isSuperAdminUser, blocks: handledBlocks } = getHandledBlocksForUser(req.user);
+
     const studentFilter = {
       $and: [
         { roles: 'student' },
         { roles: { $nin: ['admin', 'super_admin'] } },
+        // If this is a regular admin/teacher and they have handledBlocks configured,
+        // only include students from those blocks.
+        ...(!isSuperAdminUser && handledBlocks.length > 0
+          ? [{ block: { $in: handledBlocks } }]
+          : []),
       ],
     };
     const students = await User.find(studentFilter).select('_id createdAt').lean();
@@ -127,7 +144,6 @@ const getOverview = async (req, res) => {
       console.error('Overview reports error:', reportErr);
     }
 
-    const isSuperAdmin = req.user?.roles?.includes?.('super_admin');
     const payload = {
       stats: {
         totalStudents,
@@ -192,7 +208,7 @@ const getOverview = async (req, res) => {
       return { name, present, absent, late };
     });
 
-    if (isSuperAdmin) {
+    if (isSuperAdminUser) {
       const totalUsers = await User.countDocuments();
       const reportsFiled = await Report.countDocuments();
       const activeAlertsCount = await Report.countDocuments({ status: { $in: ['open', 'investigating'] } });
@@ -244,6 +260,69 @@ const getOverview = async (req, res) => {
   }
 };
 
+const getScheduleSummary = async (req, res) => {
+  try {
+    const { isSuperAdmin, blocks: handledBlocks } = getHandledBlocksForUser(req.user);
+    const teacherName = typeof req.user?.name === 'string' ? req.user.name.trim() : '';
+
+    let blockList = handledBlocks;
+    if (isSuperAdmin) {
+      const students = await User.find({ roles: 'student' }).select('block').lean();
+      const set = new Set();
+      students.forEach((s) => {
+        const b = trimIfString(s.block);
+        if (b) set.add(b);
+      });
+      blockList = [...set].sort();
+    }
+
+    if (blockList.length === 0) {
+      return res.json({ teacherName, blocks: [] });
+    }
+
+    const studentFilter = {
+      $and: [
+        { roles: 'student' },
+        { roles: { $nin: ['admin', 'super_admin'] } },
+        { block: { $in: blockList } },
+      ],
+    };
+    const students = await User.find(studentFilter)
+      .select('block comCourses')
+      .lean();
+
+    const byBlock = {};
+    blockList.forEach((b) => { byBlock[b] = { studentCount: 0, courseSet: new Map(), courses: [] }; });
+    students.forEach((s) => {
+      const block = trimIfString(s.block) || 'Unknown';
+      if (!byBlock[block]) return;
+      byBlock[block].studentCount += 1;
+      const list = Array.isArray(s.comCourses) ? s.comCourses : [];
+      list.forEach((c) => {
+        const name = trimIfString(c.courseName) || '';
+        const schedule = trimIfString(c.schedule) || '';
+        const room = trimIfString(c.room) || '';
+        if (!name && !schedule && !room) return;
+        const key = `${name}|${schedule}|${room}`;
+        if (byBlock[block].courseSet.has(key)) return;
+        byBlock[block].courseSet.set(key, true);
+        byBlock[block].courses.push({ courseName: name, schedule, room });
+      });
+    });
+
+    const blocks = blockList.map((block) => ({
+      block,
+      studentCount: (byBlock[block] && byBlock[block].studentCount) || 0,
+      courses: (byBlock[block] && byBlock[block].courses) || [],
+    }));
+
+    return res.json({ teacherName, blocks });
+  } catch (err) {
+    console.error('Schedule summary error:', err);
+    return res.status(500).json({ error: 'Failed to load schedule summary' });
+  }
+};
+
 const normalizeBlock = (v) => {
   const s = typeof v === 'string' ? v.trim() : '';
   return s || 'Unknown';
@@ -251,7 +330,7 @@ const normalizeBlock = (v) => {
 
 const getReports = async (req, res) => {
   try {
-    const { startDate, endDate, block, groupBy } = req.query;
+    const { startDate, endDate, block, groupBy, subject, day, timeSlot } = req.query;
     const dailySummary = groupBy === 'date';
 
     let start = startDate ? new Date(startDate) : new Date(new Date().setDate(new Date().getDate() - 30));
@@ -260,20 +339,66 @@ const getReports = async (req, res) => {
     end.setHours(23, 59, 59, 999);
     if (start.getTime() > end.getTime()) [start, end] = [end, start];
 
+    const { isSuperAdmin, blocks: handledBlocks } = getHandledBlocksForUser(req.user);
+
+    const filterSubject = trimIfString(subject);
+    const filterDay = trimIfString(day);
+    const filterTime = trimIfString(timeSlot);
+
+    // For non-super admins, restrict to their handledBlocks. If a block query is provided,
+    // intersect it with the allowed blocks.
+    let effectiveBlockFilter = block;
+    if (!isSuperAdmin && handledBlocks.length > 0) {
+      if (block && block !== 'All Classes') {
+        // If requested block is not in handledBlocks, result should be empty.
+        if (!handledBlocks.includes(block)) {
+          return res.json({ reports: [] });
+        }
+        effectiveBlockFilter = block;
+      } else {
+        // No specific block requested; use all handledBlocks.
+        effectiveBlockFilter = null;
+      }
+    }
+
     const studentFilter = {
       $and: [
         { roles: 'student' },
         { roles: { $nin: ['admin', 'super_admin'] } },
+        ...(!isSuperAdmin && handledBlocks.length > 0
+          ? [{ block: { $in: handledBlocks } }]
+          : []),
+        ...(effectiveBlockFilter && effectiveBlockFilter !== 'All Classes'
+          ? [{ block: effectiveBlockFilter }]
+          : []),
       ],
-      ...(block && { block }),
     };
-    const students = await User.find(studentFilter).select('_id name block createdAt');
-    const studentIds = students.map((s) => s._id);
-    const totalStudents = students.length;
+    const students = await User.find(studentFilter).select('_id name block createdAt comCourses');
+
+    const matchesCourseFilters = (user) => {
+      if (!filterSubject && !filterDay && !filterTime) return true;
+      const list = Array.isArray(user.comCourses) ? user.comCourses : [];
+      if (list.length === 0) return false;
+      const dayToken = filterDay ? filterDay.toLowerCase().slice(0, 3) : null;
+      const timeToken = filterTime ? filterTime.toLowerCase() : null;
+      return list.some((c) => {
+        const name = trimIfString(c.courseName);
+        const schedule = trimIfString(c.schedule).toLowerCase();
+        if (filterSubject && name !== filterSubject) return false;
+        if (dayToken && !schedule.includes(dayToken)) return false;
+        if (timeToken && !schedule.includes(timeToken)) return false;
+        return true;
+      });
+    };
+
+    const filteredStudents = students.filter(matchesCourseFilters);
+
+    const studentIds = filteredStudents.map((s) => s._id);
+    const totalStudents = filteredStudents.length;
     const getEnrolledBeforeCount = (beforeDate, blockFilter = null) => {
       const before = new Date(beforeDate);
       before.setHours(23, 59, 59, 999);
-      return students.filter((s) => {
+      return filteredStudents.filter((s) => {
         const created = s.createdAt ? new Date(s.createdAt) : null;
         if (!created || created > before) return false;
         if (blockFilter != null && normalizeBlock(s.block) !== blockFilter) return false;
@@ -333,7 +458,7 @@ const getReports = async (req, res) => {
     }
 
     const blockCounts = {};
-    students.forEach((s) => {
+    filteredStudents.forEach((s) => {
       const blk = normalizeBlock(s.block);
       blockCounts[blk] = (blockCounts[blk] || 0) + 1;
     });
@@ -395,19 +520,54 @@ const getReports = async (req, res) => {
 
 const getReportBlockDetails = async (req, res) => {
   try {
-    const { date, block } = req.query;
+    const { date, block, subject, day, timeSlot } = req.query;
     if (!date) return res.status(400).json({ error: 'Date is required' });
 
-    const studentFilter = {
+    const { isSuperAdmin, blocks: handledBlocks } = getHandledBlocksForUser(req.user);
+
+    const baseFilter = {
       $and: [
         { roles: 'student' },
         { roles: { $nin: ['admin', 'super_admin'] } },
+        ...(!isSuperAdmin && handledBlocks.length > 0
+          ? [{ block: { $in: handledBlocks } }]
+          : []),
+        ...(block && block !== 'All Classes'
+          ? [{ block }]
+          : []),
       ],
     };
-    let students = await User.find(studentFilter).select('_id name email block idNumber createdAt').lean();
+
+    let students = await User.find(baseFilter)
+      .select('_id name email block idNumber createdAt comCourses')
+      .lean();
+
+    // As a safety fallback, also apply block normalization filtering in memory
+    // for the requested block value.
     if (block && block !== 'All Classes') {
       students = students.filter((s) => normalizeBlock(s.block) === block);
     }
+    const filterSubject = trimIfString(subject);
+    const filterDay = trimIfString(day);
+    const filterTime = trimIfString(timeSlot);
+
+    if (filterSubject || filterDay || filterTime) {
+      const dayToken = filterDay ? filterDay.toLowerCase().slice(0, 3) : null;
+      const timeToken = filterTime ? filterTime.toLowerCase() : null;
+      students = students.filter((u) => {
+        const list = Array.isArray(u.comCourses) ? u.comCourses : [];
+        if (list.length === 0) return false;
+        return list.some((c) => {
+          const name = trimIfString(c.courseName);
+          const schedule = trimIfString(c.schedule).toLowerCase();
+          if (filterSubject && name !== filterSubject) return false;
+          if (dayToken && !schedule.includes(dayToken)) return false;
+          if (timeToken && !schedule.includes(timeToken)) return false;
+          return true;
+        });
+      });
+    }
+
     const dayStart = new Date(date);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart);
@@ -561,6 +721,22 @@ const updateArchiveRequest = async (req, res) => {
   }
 };
 
+const getAvailableBlocks = async (req, res) => {
+  try {
+    const students = await User.find({ roles: 'student' }).select('block').lean();
+    const blockSet = new Set();
+    students.forEach((s) => {
+      const b = trimIfString(s.block);
+      if (b) blockSet.add(b);
+    });
+    const blocks = [...blockSet].sort();
+    return res.json({ blocks });
+  } catch (error) {
+    console.error('Get available blocks error:', error);
+    return res.status(500).json({ error: 'Failed to fetch available blocks' });
+  }
+};
+
 const listUsers = async (req, res) => {
   try {
     const { search } = req.query;
@@ -583,6 +759,7 @@ const listUsers = async (req, res) => {
         roleLabel: roleLabels[u.roles?.[0]] || 'Admin',
         department: u.block || '—',
         status: 'Active',
+        handledBlocks: Array.isArray(u.handledBlocks) ? u.handledBlocks.filter((b) => typeof b === 'string' && b.trim()) : [],
       })),
     });
   } catch (error) {
@@ -593,10 +770,15 @@ const listUsers = async (req, res) => {
 
 const createUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, handledBlocks } = req.body;
 
     if (!trimIfString(email) || !trimIfString(password)) {
       return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const pwdCheck = validatePassword(password);
+    if (!pwdCheck.valid) {
+      return res.status(400).json({ error: pwdCheck.error });
     }
 
     const validRoles = ['student', 'admin', 'super_admin'];
@@ -606,12 +788,18 @@ const createUser = async (req, res) => {
     if (existing) return res.status(409).json({ error: 'Email already in use' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({
+    const userData = {
       name: trimIfString(name),
       email: email.toLowerCase().trim(),
       password: hashedPassword,
       roles: [finalRole],
-    });
+    };
+
+    if (finalRole === 'admin' && Array.isArray(handledBlocks)) {
+      userData.handledBlocks = handledBlocks.map((b) => trimIfString(b)).filter(Boolean);
+    }
+
+    const user = await User.create(userData);
 
     await logAudit('User Created', req.user.email, `Created user ${user.email} (${finalRole})`, 'Success');
 
@@ -626,6 +814,7 @@ const createUser = async (req, res) => {
         roleLabel: roleLabels[finalRole],
         department: user.block || '—',
         status: 'Active',
+        handledBlocks: Array.isArray(user.handledBlocks) ? user.handledBlocks : [],
       },
     });
   } catch (error) {
@@ -637,7 +826,7 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, role } = req.body;
+    const { name, email, role, handledBlocks } = req.body;
 
     const user = await User.findById(id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -650,6 +839,14 @@ const updateUser = async (req, res) => {
     }
     if (role && ['student', 'admin', 'super_admin'].includes(role)) {
       user.roles = [role];
+    }
+
+    if (role === 'admin' || user.roles?.[0] === 'admin') {
+      if (Array.isArray(handledBlocks)) {
+        user.handledBlocks = handledBlocks.map((b) => trimIfString(b)).filter(Boolean);
+      }
+    } else if (role === 'super_admin' || user.roles?.[0] === 'super_admin') {
+      user.handledBlocks = [];
     }
 
     await user.save();
@@ -667,6 +864,7 @@ const updateUser = async (req, res) => {
         roleLabel: roleLabels[user.roles?.[0]],
         department: user.block || '—',
         status: 'Active',
+        handledBlocks: Array.isArray(user.handledBlocks) ? user.handledBlocks : [],
       },
     });
   } catch (error) {
@@ -816,6 +1014,7 @@ const createInvite = async (req, res) => {
       email: trimIfString(email) || null,
       createdBy: req.user._id,
       expiresInDays: Math.min(Math.max(Number(expiresInDays) || 7, 1), 30),
+      maxUses: 50,
     });
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -837,8 +1036,10 @@ const createInvite = async (req, res) => {
 
 module.exports = {
   getOverview,
+  getScheduleSummary,
   getReports,
   getReportBlockDetails,
+  getAvailableBlocks,
   listArchiveRequests,
   createArchiveRequest,
   updateArchiveRequest,

@@ -27,6 +27,18 @@ const inviteTokenSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // How many times this invite has been used.
+    usedCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Maximum number of registrations allowed for this invite.
+    maxUses: {
+      type: Number,
+      default: 50,
+      min: 1,
+    },
     usedAt: Date,
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -36,13 +48,12 @@ const inviteTokenSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-inviteTokenSchema.index({ token: 1 });
 inviteTokenSchema.index({ expiresAt: 1 });
 
 const generateToken = () => crypto.randomBytes(32).toString('hex');
 
 inviteTokenSchema.statics.createInvite = async function (opts = {}) {
-  const { email, createdBy, expiresInDays = 7 } = opts;
+  const { email, createdBy, expiresInDays = 7, maxUses = 50 } = opts;
   const token = generateToken();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + expiresInDays);
@@ -52,6 +63,7 @@ inviteTokenSchema.statics.createInvite = async function (opts = {}) {
     email: email || null,
     role: 'student',
     expiresAt,
+    maxUses: Number.isFinite(maxUses) && maxUses > 0 ? maxUses : 50,
     createdBy,
   });
 
