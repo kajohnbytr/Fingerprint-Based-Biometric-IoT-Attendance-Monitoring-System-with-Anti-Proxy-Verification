@@ -106,8 +106,21 @@ export default function App() {
     fetchMaintenance();
   }, []);
 
-  // Check for existing session on app load
+  // Check for existing session on app load (skip on public pages to avoid 401 noise)
   useEffect(() => {
+    const isPublicRoute =
+      isRegistrationRoute ||
+      location.pathname === '/login/student' ||
+      location.pathname === '/login/admin' ||
+      location.pathname === '/login/super-admin' ||
+      location.pathname.startsWith('/login/') ||
+      location.pathname === '/forgot-password';
+
+    if (isPublicRoute) {
+      setIsLoadingAuth(false);
+      return;
+    }
+
     const checkAuth = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/auth/me`, {

@@ -3,7 +3,6 @@ import { Lock, Mail, User, BookOpen, CalendarClock, DoorClosed, Layers, Plus, Tr
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { API_BASE_URL } from '../config';
-const REGISTRATION_KEY = 'studentRegistrationCompleted';
 
 const BLOCK_OPTIONS = [
   '3BSIT-SD-01', '3BSIT-SD-02', '3BSIT-CS-01', '3BSIT-CS-02',
@@ -63,11 +62,6 @@ export function StudentRegistrationForm() {
   const maxCoursesReached = courses.length >= 12;
 
   useEffect(() => {
-    const alreadyRegistered = window.localStorage.getItem(REGISTRATION_KEY) === 'true';
-    if (alreadyRegistered) {
-      setIsLocked(true);
-      return;
-    }
     if (!tokenFromUrl) {
       setTokenValid(false);
       setTokenError('Registration requires an invite link from your admin or teacher.');
@@ -112,6 +106,11 @@ export function StudentRegistrationForm() {
 
     if (!name || !idNumber || !block || !email || !password || !confirmPassword) {
       setError('Please fill out all required fields.');
+      return;
+    }
+
+    if (!/^[0-9\-]+$/.test(idNumber.trim())) {
+      setError('ID number must contain only numbers and dashes (e.g. 03-2324-035749).');
       return;
     }
 
@@ -189,7 +188,6 @@ export function StudentRegistrationForm() {
         throw new Error(data.error || 'Registration failed');
       }
 
-      window.localStorage.setItem(REGISTRATION_KEY, 'true');
       setIsLocked(true);
       setSuccessMessage('Registration successful. You can now log in.');
       setTimeout(() => {
@@ -223,6 +221,28 @@ export function StudentRegistrationForm() {
     if (courses.length === 1) return;
     setCourses((prev) => prev.filter((_, i) => i !== index));
   };
+
+  if (isLocked) {
+    return (
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8 text-center space-y-4">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-900 mx-auto">
+            <Lock className="w-5 h-5 text-white" />
+          </div>
+          <h1 className="text-2xl font-semibold text-neutral-900">Registration complete</h1>
+          <p className="text-neutral-500">
+            This registration page can only be accessed once. Please sign in to continue.
+          </p>
+          <button
+            onClick={() => navigate('/login/student')}
+            className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all"
+          >
+            Go to login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (tokenValid === false && !tokenFromUrl) {
     return (
@@ -272,28 +292,6 @@ export function StudentRegistrationForm() {
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8 text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-neutral-900"></div>
           <p className="mt-4 text-neutral-600">Validating invite link...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLocked) {
-    return (
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8 text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-900 mx-auto">
-            <Lock className="w-5 h-5 text-white" />
-          </div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Registration complete</h1>
-          <p className="text-neutral-500">
-            This registration page can only be accessed once. Please sign in to continue.
-          </p>
-          <button
-            onClick={() => navigate('/login/student')}
-            className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all"
-          >
-            Go to login
-          </button>
         </div>
       </div>
     );
@@ -349,13 +347,15 @@ export function StudentRegistrationForm() {
               <input
                 id="student-id-number"
                 type="text"
+                inputMode="numeric"
                 value={idNumber}
-                onChange={(event) => setIdNumber(event.target.value)}
+                onChange={(event) => setIdNumber(event.target.value.replace(/[^0-9\-]/g, ''))}
                 placeholder="03-2324-035749"
                 required
                 className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
               />
             </div>
+            <p className="mt-1 text-xs text-neutral-500">Numbers and dashes only (e.g. 03-2324-035749)</p>
           </div>
 
           <div>

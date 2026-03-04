@@ -137,6 +137,10 @@ const register = async (req, res) => {
       if (!name || !idNumber || !block) {
         return res.status(400).json({ error: 'Name, ID number, and block are required for student registration' });
       }
+      const trimmedIdNumber = typeof idNumber === 'string' ? idNumber.trim() : '';
+      if (!/^[0-9\-]+$/.test(trimmedIdNumber)) {
+        return res.status(400).json({ error: 'ID number must contain only numbers and dashes (e.g. 03-2324-035749)' });
+      }
 
       if (finalComCourses.length === 0) {
         return res.status(400).json({
