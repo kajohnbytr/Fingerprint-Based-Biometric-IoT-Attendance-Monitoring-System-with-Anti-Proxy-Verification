@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Archive, Send } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -10,14 +10,23 @@ import { Badge } from '../ui/badge';
 import { API_BASE_URL } from '../../config';
 
 export function ArchiveRequests({ canReview }: { canReview: boolean }) {
-  const [requests, setRequests] = useState<{ id: string; requestId: string; student: string; block: string; reason: string; status: string; requestedBy: string }[]>([]);
+  type ArchiveRequest = {
+    id: string;
+    requestId: string;
+    student: string;
+    block: string;
+    reason: string;
+    status: string;
+    requestedBy: string;
+  };
+  const [requests, setRequests] = useState([] as ArchiveRequest[]);
   const [studentName, setStudentName] = useState('');
   const [studentBlock, setStudentBlock] = useState('');
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [error, setError] = useState(null as string | null);
+  const [successMessage, setSuccessMessage] = useState(null as string | null);
 
   const fetchRequests = async () => {
     try {

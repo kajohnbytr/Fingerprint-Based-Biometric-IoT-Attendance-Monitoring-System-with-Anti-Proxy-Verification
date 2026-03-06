@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Lock, Mail, User, BookOpen, CalendarClock, DoorClosed, Layers, Plus, Trash2, Hash } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Lock, Mail, User, BookOpen, CalendarClock, DoorClosed, Layers, Hash, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { API_BASE_URL } from '../config';
@@ -10,13 +10,31 @@ const BLOCK_OPTIONS = [
 ];
 
 const SUBJECT_OPTIONS = [
-  'ITE 384',
-  'ITE 385',
-  'ITE 401',
-  'ITE 293',
-  'ITE 370',
-  'ITE 309',
-  'SSP 008',
+  'ITE 293 - Systems Administration and Maintenance',
+  'ITE 294 - Capstone Project and Research 1',
+  'ITE 295 - Information Assurance and Security 2',
+  'ITE 296 - Computer Forensics',
+  'ITE 297 - Ethical Hacking',
+  'ITE 260 - Computer Programming 1',
+  'ITE 366 - Introduction to Computing (including IT Fundamentals)',
+  'ITE 186 - Computer Programming 2',
+  'ITE 399 - Human Computer Interaction 1',
+  'ITE 031 - Data Structures and Algorithms',
+  'ITE 083 - IT Project Management',
+  'ITE 292 - Networking 1',
+  'ITE 298 - Information Management (Including Fundamentals of Database Systems)',
+  'ITE 300 - Object-Oriented Programming',
+  'ITE 308 - Web System and Technologies',
+  'ITE 380 - Human Computer Interaction 2',
+  'ITE 393 - Applications Development and Emerging Technologies (including Event-Driven Programming)',
+  'ITE 400 - Systems Integration and Architecture',
+  'ITE 302 - Information Assurance and Security 1',
+  'ITE 307 - Quantitative Methods (including Modeling and Simulation)',
+  'ITE 314 - Advanced Database Systems',
+  'ITE 353 - Data Scalability & Analytics',
+  'ITE 359 - Networking 2',
+  'ITE 383 - Network Security',
+  'ITE 401 - Platform Technologies',
 ];
 
 const DAY_OPTIONS = [
@@ -38,28 +56,96 @@ const TIME_SCHEDULE_OPTIONS = [
   '4:30 PM - 6:00 PM',
 ];
 
+const CUSTOM_TIME_VALUE = '__custom_time__';
+
+type CourseSchedule = {
+  courseName: string;
+  day1: string;
+  day2: string;
+  time1Type: 'preset' | 'custom';
+  time1Slot: string;
+  time1Start: string;
+  time1End: string;
+  room1: string;
+  time2Type: 'preset' | 'custom';
+  time2Slot: string;
+  time2Start: string;
+  time2End: string;
+  room2: string;
+  sameTime: boolean;
+  sameRoom: boolean;
+};
+
+const to24Hour = (value: string) => {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
+  if (!match) return '';
+  let hours = Number(match[1]);
+  const minutes = match[2];
+  const period = match[3].toUpperCase();
+  if (Number.isNaN(hours)) return '';
+  if (period === 'PM' && hours < 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  return `${String(hours).padStart(2, '0')}:${minutes}`;
+};
+
+const parsePresetTimeRange = (slot: string) => {
+  const match = String(slot || '').match(/(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+  if (!match) return { startTime: '', endTime: '' };
+  return {
+    startTime: to24Hour(match[1]),
+    endTime: to24Hour(match[2]),
+  };
+};
+
+const formatTime12 = (value: string) => {
+  const [h, m] = String(value || '').split(':');
+  if (!m) return value;
+  let hours = Number(h);
+  if (Number.isNaN(hours)) return value;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  hours %= 12;
+  if (hours === 0) hours = 12;
+  return `${hours}:${m} ${period}`;
+};
+
+const buildTimeLabel = (type: 'preset' | 'custom', slot: string, start: string, end: string) => {
+  if (type === 'custom') {
+    if (!start || !end) return '';
+    return `${formatTime12(start)} - ${formatTime12(end)}`;
+  }
+  return slot || '';
+};
+
 export function StudentRegistrationForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const tokenFromUrl = searchParams.get('token');
 
   const [isLocked, setIsLocked] = useState(false);
-  const [tokenValid, setTokenValid] = useState<boolean | null>(null);
-  const [tokenError, setTokenError] = useState<string | null>(null);
-  const [prefillEmail, setPrefillEmail] = useState<string | null>(null);
+  const [tokenValid, setTokenValid] = useState(null as boolean | null);
+  const [tokenError, setTokenError] = useState(null as string | null);
+  const [prefillEmail, setPrefillEmail] = useState(null as string | null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [error, setError] = useState(null as string | null);
+  const [successMessage, setSuccessMessage] = useState(null as string | null);
+  const [currentStep, setCurrentStep] = useState('details' as 'details' | 'schedule');
+  const [fingerprintId, setFingerprintId] = useState(null as string | null);
+  const [fingerprintCopied, setFingerprintCopied] = useState(false);
 
-  const [name, setName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [middleInitial, setMiddleInitial] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [block, setBlock] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [courses, setCourses] = useState([{ courseName: '', day: '', schedule: '', room: '' }]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [selectedSubjects, setSelectedSubjects] = useState([] as string[]);
+  const [courses, setCourses] = useState([] as CourseSchedule[]);
 
-  const maxCoursesReached = courses.length >= 12;
+  const maxCoursesReached = selectedSubjects.length >= 12;
 
   useEffect(() => {
     if (!tokenFromUrl) {
@@ -99,68 +185,128 @@ export function StudentRegistrationForm() {
     if (prefillEmail) setEmail(prefillEmail);
   }, [prefillEmail]);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    setSuccessMessage(null);
+  useEffect(() => {
+    setCourses((prev) => {
+      const bySubject = new Map(prev.map((course) => [course.courseName, course]));
+      return selectedSubjects.map((subject) => (
+        bySubject.get(subject) ?? {
+          courseName: subject,
+          day1: '',
+          day2: '',
+          time1Type: 'preset',
+          time1Slot: '',
+          time1Start: '',
+          time1End: '',
+          room1: '',
+          time2Type: 'preset',
+          time2Slot: '',
+          time2Start: '',
+          time2End: '',
+          room2: '',
+          sameTime: false,
+          sameRoom: false,
+        }
+      ));
+    });
+  }, [selectedSubjects]);
 
-    if (!name || !idNumber || !block || !email || !password || !confirmPassword) {
+  const validateStepOne = () => {
+    if (!lastName || !firstName || !idNumber || !block || !email || !password || !confirmPassword) {
       setError('Please fill out all required fields.');
-      return;
+      return false;
     }
 
     if (!/^[0-9\-]+$/.test(idNumber.trim())) {
       setError('ID number must contain only numbers and dashes (e.g. 03-2324-035749).');
-      return;
+      return false;
     }
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail.includes('phinmaed')) {
       setError('Please use your PHINMAED email address.');
-      return;
+      return false;
     }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
-      return;
+      return false;
     }
 
+    if (selectedSubjects.length === 0) {
+      setError('Please select at least one subject from your COM receipt.');
+      return false;
+    }
+
+    if (selectedSubjects.length > 12) {
+      setError('You can only register up to 12 subjects.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleNextStep = () => {
+    setError(null);
+    setSuccessMessage(null);
+    if (!validateStepOne()) return;
+    setCurrentStep('schedule');
+  };
+
+  const handleSubmit = async (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    setError(null);
+    setSuccessMessage(null);
+
+    if (!validateStepOne()) return;
+
     if (courses.length === 0) {
-      setError('Please add at least one course.');
+      setError('Please select at least one subject.');
       return;
     }
 
     if (courses.length > 12) {
-      setError('You can only register up to 12 courses.');
+      setError('You can only register up to 12 subjects.');
       return;
     }
 
-    const hasIncompleteCourse = courses.some(
-      (course) =>
-        !course.courseName.trim() ||
-        !course.day.trim() ||
-        !course.schedule.trim() ||
-        !course.room.trim()
-    );
+    const hasIncompleteCourse = courses.some((course) => {
+      if (!course.day1.trim()) return true;
+      const time1Label = buildTimeLabel(course.time1Type, course.time1Slot, course.time1Start, course.time1End);
+      if (!time1Label) return true;
+      if (!course.room1.trim()) return true;
+      if (course.day2.trim()) {
+        const time2Source = course.sameTime
+          ? { type: course.time1Type, slot: course.time1Slot, start: course.time1Start, end: course.time1End }
+          : { type: course.time2Type, slot: course.time2Slot, start: course.time2Start, end: course.time2End };
+        const time2Label = buildTimeLabel(
+          time2Source.type,
+          time2Source.slot,
+          time2Source.start,
+          time2Source.end
+        );
+        if (!time2Label) return true;
+        const room2Value = course.sameRoom ? course.room1 : course.room2;
+        if (!room2Value.trim()) return true;
+      }
+      return false;
+    });
     if (hasIncompleteCourse) {
-      setError('Each course must include subject, day, time schedule, and room assigned.');
+      setError('Each subject must include day, time schedule, and room assigned.');
       return;
     }
 
-    const subjectCounts = courses.reduce<Record<string, number>>((acc, c) => {
-      const s = c.courseName.trim();
-      if (s) acc[s] = (acc[s] ?? 0) + 1;
-      return acc;
-    }, {});
-    const hasDuplicateSubject = Object.values(subjectCounts).some((n: number) => n > 1);
-    if (hasDuplicateSubject) {
-      setError('Each subject can only be selected once. Please choose a different subject for any duplicate.');
-      return;
-    }
+    const confirmed = window.confirm(
+      'Submit your registration and schedules? You will receive your fingerprint ID after submission.'
+    );
+    if (!confirmed) return;
 
     setIsLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const formattedName = `${lastName.trim()}, ${firstName.trim()}${middleInitial.trim()
+        ? ` ${middleInitial.trim()}.`
+        : ''}`;
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
@@ -169,16 +315,65 @@ export function StudentRegistrationForm() {
         body: JSON.stringify({
           token: tokenFromUrl,
           role: 'student',
-          name,
+          name: formattedName,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          middleInitial: middleInitial.trim(),
           idNumber: idNumber.trim(),
           block,
           email: normalizedEmail,
           password,
-          comCourses: courses.map((course) => ({
-            courseName: course.courseName.trim(),
-            schedule: `${course.day.trim()} ${course.schedule.trim()}`.trim(),
-            room: course.room.trim(),
-          })),
+          comCourses: courses.map((course) => {
+            const time1Label = buildTimeLabel(course.time1Type, course.time1Slot, course.time1Start, course.time1End);
+            const time1Range = course.time1Type === 'custom'
+              ? { startTime: course.time1Start, endTime: course.time1End }
+              : parsePresetTimeRange(course.time1Slot);
+
+            const time2Source = course.sameTime
+              ? { type: course.time1Type, slot: course.time1Slot, start: course.time1Start, end: course.time1End }
+              : { type: course.time2Type, slot: course.time2Slot, start: course.time2Start, end: course.time2End };
+            const time2Label = buildTimeLabel(time2Source.type, time2Source.slot, time2Source.start, time2Source.end);
+            const time2Range = time2Source.type === 'custom'
+              ? { startTime: time2Source.start, endTime: time2Source.end }
+              : parsePresetTimeRange(time2Source.slot);
+
+            const room2Value = course.sameRoom ? course.room1 : course.room2;
+
+            const scheduleParts = [`${course.day1.trim()} ${time1Label}`.trim()];
+            if (course.day2.trim()) {
+              scheduleParts.push(`${course.day2.trim()} ${time2Label}`.trim());
+            }
+
+            const roomParts = [course.room1.trim()];
+            if (course.day2.trim()) {
+              roomParts.push(room2Value.trim());
+            }
+
+            const sessions = [
+              {
+                day: course.day1.trim(),
+                startTime: time1Range.startTime || '',
+                endTime: time1Range.endTime || '',
+                room: course.room1.trim(),
+              },
+            ];
+
+            if (course.day2.trim()) {
+              sessions.push({
+                day: course.day2.trim(),
+                startTime: time2Range.startTime || '',
+                endTime: time2Range.endTime || '',
+                room: room2Value.trim(),
+              });
+            }
+
+            return {
+              courseName: course.courseName.trim(),
+              schedule: scheduleParts.filter(Boolean).join(' | '),
+              room: roomParts.filter(Boolean).join(' | '),
+              sessions,
+            };
+          }),
         }),
       });
 
@@ -189,10 +384,8 @@ export function StudentRegistrationForm() {
       }
 
       setIsLocked(true);
-      setSuccessMessage('Registration successful. You can now log in.');
-      setTimeout(() => {
-        navigate('/login/student');
-      }, 1200);
+      setFingerprintId(typeof data.fingerprintId === 'string' ? data.fingerprintId : null);
+      setSuccessMessage('Registration successful. Save your fingerprint ID below.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred during registration');
     } finally {
@@ -200,39 +393,63 @@ export function StudentRegistrationForm() {
     }
   };
 
-  const handleCourseChange = (
-    index: number,
-    field: 'courseName' | 'day' | 'schedule' | 'room',
-    value: string
-  ) => {
+  const updateCourse = (index: number, updater: (course: CourseSchedule) => CourseSchedule) => {
     setCourses((prev) =>
-      prev.map((course, courseIndex) =>
-        courseIndex === index ? { ...course, [field]: value } : course
-      )
+      prev.map((course, courseIndex) => (courseIndex === index ? updater(course) : course))
     );
   };
 
-  const handleAddCourse = () => {
-    if (maxCoursesReached) return;
-    setCourses((prev) => [...prev, { courseName: '', day: '', schedule: '', room: '' }]);
+  const handleSubjectToggle = (subject: string) => {
+    setError(null);
+    setSelectedSubjects((prev) => {
+      const isSelected = prev.includes(subject);
+      if (isSelected) return prev.filter((s) => s !== subject);
+      if (maxCoursesReached) {
+        setError('You can only select up to 12 subjects.');
+        return prev;
+      }
+      return [...prev, subject];
+    });
   };
 
-  const handleRemoveCourse = (index: number) => {
-    if (courses.length === 1) return;
-    setCourses((prev) => prev.filter((_, i) => i !== index));
+  const handleCopyFingerprintId = async () => {
+    if (!fingerprintId) return;
+    try {
+      await navigator.clipboard.writeText(fingerprintId);
+      setFingerprintCopied(true);
+      setTimeout(() => setFingerprintCopied(false), 2000);
+    } catch {
+      setError('Could not copy fingerprint ID');
+    }
   };
 
   if (isLocked) {
     return (
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8 text-center space-y-4">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-900 mx-auto">
             <Lock className="w-5 h-5 text-white" />
           </div>
           <h1 className="text-2xl font-semibold text-neutral-900">Registration complete</h1>
-          <p className="text-neutral-500">
-            This registration page can only be accessed once. Please sign in to continue.
-          </p>
+          <p className="text-neutral-500">Save this fingerprint ID to register your fingerprint on the IoT device.</p>
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-left space-y-2">
+            <p className="text-xs uppercase tracking-wide text-neutral-500">Fingerprint ID</p>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm text-neutral-900 break-all">
+                {fingerprintId || 'Not available'}
+              </span>
+              {fingerprintId && (
+                <button
+                  type="button"
+                  onClick={handleCopyFingerprintId}
+                  className="inline-flex items-center gap-1 text-xs text-neutral-600 hover:text-neutral-900"
+                >
+                  {fingerprintCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {fingerprintCopied ? 'Copied' : 'Copy'}
+                </button>
+              )}
+            </div>
+          </div>
           <button
             onClick={() => navigate('/login/student')}
             className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all"
@@ -246,7 +463,7 @@ export function StudentRegistrationForm() {
 
   if (tokenValid === false && !tokenFromUrl) {
     return (
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8 text-center space-y-4">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 mx-auto">
             <Lock className="w-5 h-5 text-amber-700" />
@@ -268,7 +485,7 @@ export function StudentRegistrationForm() {
 
   if (tokenValid === false && tokenFromUrl) {
     return (
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8 text-center space-y-4">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto">
             <Lock className="w-5 h-5 text-red-700" />
@@ -288,7 +505,7 @@ export function StudentRegistrationForm() {
 
   if (tokenValid !== true) {
     return (
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8 text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-neutral-900"></div>
           <p className="mt-4 text-neutral-600">Validating invite link...</p>
@@ -298,7 +515,7 @@ export function StudentRegistrationForm() {
   }
 
   return (
-    <div className="w-full max-w-md">
+    <div className="w-full max-w-4xl mx-auto">
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 p-8">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-900 mb-4">
@@ -320,271 +537,564 @@ export function StudentRegistrationForm() {
             </div>
           )}
 
-          <div>
-            <label htmlFor="student-name" className="block text-sm font-medium text-neutral-700 mb-2">
-              Full Name
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-              <input
-                id="student-name"
-                type="text"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Juan Dela Cruz"
-                required
-                className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="student-id-number" className="block text-sm font-medium text-neutral-700 mb-2">
-              ID Number
-            </label>
-            <div className="relative">
-              <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-              <input
-                id="student-id-number"
-                type="text"
-                inputMode="numeric"
-                value={idNumber}
-                onChange={(event) => setIdNumber(event.target.value.replace(/[^0-9\-]/g, ''))}
-                placeholder="03-2324-035749"
-                required
-                className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
-              />
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">Numbers and dashes only (e.g. 03-2324-035749)</p>
-          </div>
-
-          <div>
-            <label htmlFor="student-block" className="block text-sm font-medium text-neutral-700 mb-2">
-              Block / Section
-            </label>
-            <div className="relative">
-              <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10" />
-              <select
-                id="student-block"
-                value={block}
-                onChange={(event) => setBlock(event.target.value)}
-                required
-                className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
-              >
-                <option value="">Select block / section</option>
-                {BLOCK_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="student-email" className="block text-sm font-medium text-neutral-700 mb-2">
-              PHINMAED Email
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-              <input
-                id="student-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="student@phinmaed.edu.ph"
-                required
-                className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="student-password" className="block text-sm font-medium text-neutral-700 mb-2">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-              <input
-                id="student-password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
-                required
-                minLength={8}
-                className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
-              />
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">
-              Min 8 chars, uppercase, lowercase, number, special character (!@#$%^&*)
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="student-confirm-password" className="block text-sm font-medium text-neutral-700 mb-2">
-              Confirm Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-              <input
-                id="student-confirm-password"
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                placeholder="••••••••"
-                required
-                className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-neutral-700">COM Course Details</p>
-                <p className="text-xs text-neutral-500">Add up to 12 courses.</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddCourse}
-                disabled={maxCoursesReached}
-                className="inline-flex items-center gap-2 text-sm text-neutral-700 hover:text-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-4 h-4" />
-                Add course
-              </button>
-            </div>
-
-            {courses.map((course, index) => (
-              <div key={`course-${index}`} className="space-y-3 rounded-lg border border-neutral-200 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-neutral-700">Course {index + 1}</p>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveCourse(index)}
-                    disabled={courses.length === 1}
-                    className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-900 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Remove
-                  </button>
-                </div>
-
-                <div>
-                  <label htmlFor={`com-course-${index}`} className="block text-sm font-medium text-neutral-700 mb-2">
-                    Subject
-                  </label>
+          {currentStep === 'details' ? (
+            <>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-neutral-700">Full Name</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="relative">
-                    <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10" />
-                    <select
-                      id={`com-course-${index}`}
-                      value={course.courseName}
-                      onChange={(e) => handleCourseChange(index, 'courseName', e.target.value)}
-                      required
-                      className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
-                    >
-                      <option value="">Select subject</option>
-                      {(() => {
-                        const takenByOther = courses
-                          .filter((_, i) => i !== index)
-                          .map((c) => c.courseName.trim())
-                          .filter(Boolean);
-                        return SUBJECT_OPTIONS.filter(
-                          (subject) => subject === course.courseName || !takenByOther.includes(subject)
-                        ).map((subject) => (
-                          <option key={subject} value={subject}>
-                            {subject}
-                          </option>
-                        ));
-                      })()}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor={`com-day-${index}`} className="block text-sm font-medium text-neutral-700 mb-2">
-                    Day
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10">
-                      {/* simple circle to align with other icons */}
-                      <span className="inline-block w-3 h-3 rounded-full border border-neutral-300" />
-                    </div>
-                    <select
-                      id={`com-day-${index}`}
-                      value={course.day}
-                      onChange={(e) => handleCourseChange(index, 'day', e.target.value)}
-                      required
-                      className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
-                    >
-                      <option value="">Select day</option>
-                      {DAY_OPTIONS.map((day) => (
-                        <option key={day} value={day}>
-                          {day}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor={`com-schedule-${index}`} className="block text-sm font-medium text-neutral-700 mb-2">
-                    Time Schedule
-                  </label>
-                  <div className="relative">
-                    <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10" />
-                    <select
-                      id={`com-schedule-${index}`}
-                      value={course.schedule}
-                      onChange={(e) => handleCourseChange(index, 'schedule', e.target.value)}
-                      required
-                      className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
-                    >
-                      <option value="">Select time schedule</option>
-                      {TIME_SCHEDULE_OPTIONS.map((slot) => (
-                        <option key={slot} value={slot}>
-                          {slot}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor={`com-room-${index}`} className="block text-sm font-medium text-neutral-700 mb-2">
-                    Room Assigned
-                  </label>
-                  <div className="relative">
-                    <DoorClosed className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
                     <input
-                      id={`com-room-${index}`}
+                      id="student-last-name"
                       type="text"
-                      value={course.room}
-                      onChange={(e) => handleCourseChange(index, 'room', e.target.value)}
-                      placeholder="Room 204"
+                      value={lastName}
+                      onChange={(event) => setLastName(event.target.value)}
+                      placeholder="Last name"
                       required
                       className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
                     />
                   </div>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                    <input
+                      id="student-first-name"
+                      type="text"
+                      value={firstName}
+                      onChange={(event) => setFirstName(event.target.value)}
+                      placeholder="First name"
+                      required
+                      className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
+                    />
+                  </div>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                    <input
+                      id="student-middle-initial"
+                      type="text"
+                      value={middleInitial}
+                      onChange={(event) =>
+                        setMiddleInitial(event.target.value.replace(/[^a-zA-Z]/g, '').slice(0, 1).toUpperCase())
+                      }
+                      placeholder="M"
+                      maxLength={1}
+                      className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-neutral-500">Format: Last name, First name, Middle initial</p>
+              </div>
+
+              <div>
+                <label htmlFor="student-id-number" className="block text-sm font-medium text-neutral-700 mb-2">
+                  ID Number
+                </label>
+                <div className="relative">
+                  <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                  <input
+                    id="student-id-number"
+                    type="text"
+                    inputMode="numeric"
+                    value={idNumber}
+                    onChange={(event) => setIdNumber(event.target.value.replace(/[^0-9\-]/g, ''))}
+                    placeholder="03-2324-035749"
+                    required
+                    className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-neutral-500">Numbers and dashes only (e.g. 03-2324-035749)</p>
+              </div>
+
+              <div>
+                <label htmlFor="student-block" className="block text-sm font-medium text-neutral-700 mb-2">
+                  Block / Section
+                </label>
+                <div className="relative">
+                  <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10" />
+                  <select
+                    id="student-block"
+                    value={block}
+                    onChange={(event) => setBlock(event.target.value)}
+                    required
+                    className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
+                  >
+                    <option value="">Select block / section</option>
+                    {BLOCK_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
-            ))}
-          </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Creating account...' : 'Create account'}
-          </button>
+              <div>
+                <label htmlFor="student-email" className="block text-sm font-medium text-neutral-700 mb-2">
+                  PHINMAED Email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                  <input
+                    id="student-email"
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="student@phinmaed.edu.ph"
+                    required
+                    className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
+                  />
+                </div>
+              </div>
 
-          <button
-            type="button"
-            onClick={() => navigate('/login/student')}
-            className="w-full text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
-          >
-            Back to login
-          </button>
+              <div>
+                <label htmlFor="student-password" className="block text-sm font-medium text-neutral-700 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                  <input
+                    id="student-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={8}
+                    className="w-full pl-11 pr-11 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Min 8 chars, uppercase, lowercase, number, special character (!@#$%^&*)
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="student-confirm-password" className="block text-sm font-medium text-neutral-700 mb-2">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                  <input
+                    id="student-confirm-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    placeholder="••••••••"
+                    required
+                    className="w-full pl-11 pr-11 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-neutral-700">COM Subjects</p>
+                    <p className="text-xs text-neutral-500">Select the subjects listed on your COM receipt.</p>
+                  </div>
+                  <span className="text-xs text-neutral-500">{selectedSubjects.length}/12 selected</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {SUBJECT_OPTIONS.map((subject) => {
+                    const isSelected = selectedSubjects.includes(subject);
+                    return (
+                      <label
+                        key={subject}
+                        className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                            : 'border-neutral-200 text-neutral-700 hover:border-neutral-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleSubjectToggle(subject)}
+                          className="mt-1"
+                        />
+                        <div className="flex items-start gap-2">
+                          <BookOpen className="w-4 h-4 text-neutral-400 mt-0.5" />
+                          <span>{subject}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                {maxCoursesReached && (
+                  <p className="text-xs text-amber-600">You have reached the 12-subject limit.</p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all"
+              >
+                Next: Add schedules
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate('/login/student')}
+                className="w-full text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+              >
+                Back to login
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+                <span className="font-medium text-neutral-900">{selectedSubjects.length}</span> subjects selected. Add
+                the day, time, and room for each subject.
+              </div>
+
+              <div className="space-y-4">
+                {courses.map((course, index) => {
+                  const time1SelectValue =
+                    course.time1Type === 'custom' ? CUSTOM_TIME_VALUE : course.time1Slot;
+                  const time2SelectValue = course.sameTime
+                    ? (course.time1Type === 'custom' ? CUSTOM_TIME_VALUE : course.time1Slot)
+                    : (course.time2Type === 'custom' ? CUSTOM_TIME_VALUE : course.time2Slot);
+                  const room2Value = course.sameRoom ? course.room1 : course.room2;
+
+                  return (
+                    <div key={course.courseName} className="space-y-4 rounded-lg border border-neutral-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-neutral-700">Subject {index + 1}</p>
+                        <span className="text-xs text-neutral-500">{course.courseName}</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label htmlFor={`com-day1-${index}`} className="block text-sm font-medium text-neutral-700 mb-2">
+                            Day 1
+                          </label>
+                          <div className="relative">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10">
+                              <span className="inline-block w-3 h-3 rounded-full border border-neutral-300" />
+                            </div>
+                            <select
+                              id={`com-day1-${index}`}
+                              value={course.day1}
+                              onChange={(e) => updateCourse(index, (c) => ({ ...c, day1: e.target.value }))}
+                              required
+                              className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
+                            >
+                              <option value="">Select day</option>
+                              {DAY_OPTIONS.map((day) => (
+                                <option key={day} value={day}>
+                                  {day}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label htmlFor={`com-day2-${index}`} className="block text-sm font-medium text-neutral-700 mb-2">
+                            Day 2 (optional)
+                          </label>
+                          <div className="relative">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10">
+                              <span className="inline-block w-3 h-3 rounded-full border border-neutral-300" />
+                            </div>
+                            <select
+                              id={`com-day2-${index}`}
+                              value={course.day2}
+                              onChange={(e) =>
+                                updateCourse(index, (c) => {
+                                  const nextDay = e.target.value;
+                                  if (!nextDay) {
+                                    return {
+                                      ...c,
+                                      day2: '',
+                                      sameTime: false,
+                                      sameRoom: false,
+                                      time2Type: 'preset',
+                                      time2Slot: '',
+                                      time2Start: '',
+                                      time2End: '',
+                                      room2: '',
+                                    };
+                                  }
+                                  return { ...c, day2: nextDay };
+                                })
+                              }
+                              className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
+                            >
+                              <option value="">No second day</option>
+                              {DAY_OPTIONS.map((day) => (
+                                <option key={day} value={day}>
+                                  {day}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label htmlFor={`com-schedule1-${index}`} className="block text-sm font-medium text-neutral-700">
+                            Time (Day 1)
+                          </label>
+                          <div className="relative">
+                            <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10" />
+                            <select
+                              id={`com-schedule1-${index}`}
+                              value={time1SelectValue}
+                              onChange={(e) =>
+                                updateCourse(index, (c) => {
+                                  const value = e.target.value;
+                                  const next: CourseSchedule = value === CUSTOM_TIME_VALUE
+                                    ? { ...c, time1Type: 'custom', time1Slot: '' }
+                                    : { ...c, time1Type: 'preset', time1Slot: value };
+                                  if (next.sameTime) {
+                                    return {
+                                      ...next,
+                                      time2Type: next.time1Type,
+                                      time2Slot: next.time1Slot,
+                                      time2Start: next.time1Start,
+                                      time2End: next.time1End,
+                                    };
+                                  }
+                                  return next;
+                                })
+                              }
+                              required
+                              className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white"
+                            >
+                              <option value="">Select time schedule</option>
+                              {TIME_SCHEDULE_OPTIONS.map((slot) => (
+                                <option key={slot} value={slot}>
+                                  {slot}
+                                </option>
+                              ))}
+                              <option value={CUSTOM_TIME_VALUE}>Custom time</option>
+                            </select>
+                          </div>
+                          {course.time1Type === 'custom' && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="time"
+                                value={course.time1Start}
+                                onChange={(e) =>
+                                  updateCourse(index, (c) => {
+                                    const next = { ...c, time1Start: e.target.value };
+                                    if (next.sameTime) {
+                                      return { ...next, time2Start: next.time1Start };
+                                    }
+                                    return next;
+                                  })
+                                }
+                                className="w-full px-3 py-2 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none text-sm"
+                              />
+                              <input
+                                type="time"
+                                value={course.time1End}
+                                onChange={(e) =>
+                                  updateCourse(index, (c) => {
+                                    const next = { ...c, time1End: e.target.value };
+                                    if (next.sameTime) {
+                                      return { ...next, time2End: next.time1End };
+                                    }
+                                    return next;
+                                  })
+                                }
+                                className="w-full px-3 py-2 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none text-sm"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label htmlFor={`com-room1-${index}`} className="block text-sm font-medium text-neutral-700">
+                            Room (Day 1)
+                          </label>
+                          <div className="relative">
+                            <DoorClosed className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                            <input
+                              id={`com-room1-${index}`}
+                              type="text"
+                              value={course.room1}
+                              onChange={(e) =>
+                                updateCourse(index, (c) => {
+                                  const next = { ...c, room1: e.target.value };
+                                  if (next.sameRoom) {
+                                    return { ...next, room2: next.room1 };
+                                  }
+                                  return next;
+                                })
+                              }
+                              placeholder="Room 204"
+                              required
+                              className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {course.day2 && (
+                        <div className="space-y-3 rounded-lg border border-neutral-200/80 bg-neutral-50/50 p-3">
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                            <p className="text-sm font-medium text-neutral-700">Second day details</p>
+                            <div className="flex flex-wrap gap-4 text-xs text-neutral-600">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={course.sameTime}
+                                  onChange={(e) =>
+                                    updateCourse(index, (c) => {
+                                      const checked = e.target.checked;
+                                      if (!checked) return { ...c, sameTime: false };
+                                      return {
+                                        ...c,
+                                        sameTime: true,
+                                        time2Type: c.time1Type,
+                                        time2Slot: c.time1Slot,
+                                        time2Start: c.time1Start,
+                                        time2End: c.time1End,
+                                      };
+                                    })
+                                  }
+                                />
+                                Same time as day 1
+                              </label>
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={course.sameRoom}
+                                  onChange={(e) =>
+                                    updateCourse(index, (c) => {
+                                      const checked = e.target.checked;
+                                      if (!checked) return { ...c, sameRoom: false };
+                                      return { ...c, sameRoom: true, room2: c.room1 };
+                                    })
+                                  }
+                                />
+                                Same room as day 1
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label htmlFor={`com-schedule2-${index}`} className="block text-sm font-medium text-neutral-700">
+                                Time (Day 2)
+                              </label>
+                              <div className="relative">
+                                <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none z-10" />
+                                <select
+                                  id={`com-schedule2-${index}`}
+                                  value={time2SelectValue}
+                                  onChange={(e) =>
+                                    updateCourse(index, (c) => {
+                                      if (c.sameTime) return c;
+                                      const value = e.target.value;
+                                      return value === CUSTOM_TIME_VALUE
+                                        ? { ...c, time2Type: 'custom', time2Slot: '' }
+                                        : { ...c, time2Type: 'preset', time2Slot: value };
+                                    })
+                                  }
+                                  required
+                                  disabled={course.sameTime}
+                                  className="w-full pl-11 pr-10 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 appearance-none bg-white disabled:bg-neutral-100"
+                                >
+                                  <option value="">Select time schedule</option>
+                                  {TIME_SCHEDULE_OPTIONS.map((slot) => (
+                                    <option key={slot} value={slot}>
+                                      {slot}
+                                    </option>
+                                  ))}
+                                  <option value={CUSTOM_TIME_VALUE}>Custom time</option>
+                                </select>
+                              </div>
+                              {course.day2 && (course.sameTime
+                                ? null
+                                : course.time2Type === 'custom') && (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <input
+                                    type="time"
+                                    value={course.sameTime ? course.time1Start : course.time2Start}
+                                    onChange={(e) =>
+                                      updateCourse(index, (c) => (c.sameTime ? c : { ...c, time2Start: e.target.value }))
+                                    }
+                                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none text-sm"
+                                    disabled={course.sameTime}
+                                  />
+                                  <input
+                                    type="time"
+                                    value={course.sameTime ? course.time1End : course.time2End}
+                                    onChange={(e) =>
+                                      updateCourse(index, (c) => (c.sameTime ? c : { ...c, time2End: e.target.value }))
+                                    }
+                                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none text-sm"
+                                    disabled={course.sameTime}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-2">
+                              <label htmlFor={`com-room2-${index}`} className="block text-sm font-medium text-neutral-700">
+                                Room (Day 2)
+                              </label>
+                              <div className="relative">
+                                <DoorClosed className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                                <input
+                                  id={`com-room2-${index}`}
+                                  type="text"
+                                  value={room2Value}
+                                  onChange={(e) =>
+                                    updateCourse(index, (c) => (c.sameRoom ? c : { ...c, room2: e.target.value }))
+                                  }
+                                  placeholder="Room 204"
+                                  required
+                                  disabled={course.sameRoom}
+                                  className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400 disabled:bg-neutral-100"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? 'Submitting schedules...' : 'Submit schedules'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('details')}
+                  className="w-full text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+                >
+                  Back to subject selection
+                </button>
+              </div>
+            </>
+          )}
         </form>
       </div>
     </div>

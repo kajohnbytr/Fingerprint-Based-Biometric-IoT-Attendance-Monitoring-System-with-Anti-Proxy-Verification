@@ -1,4 +1,4 @@
-import React, { Component, useEffect, useMemo, useState } from 'react';
+import React, { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LoginForm } from './components/LoginForm';
 import { ForgotPasswordForm } from './components/ForgotPasswordForm';
@@ -89,6 +89,8 @@ export default function App() {
   const [currentView, setCurrentView] = useState('overview');
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const superAdminIdleTimerRef = useRef(null as any);
+  const lastActivityRef = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
   const isRegistrationRoute = location.pathname === '/register/student' || location.pathname.startsWith('/register/student/');
@@ -150,7 +152,7 @@ export default function App() {
     checkAuth();
   }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await fetch(`${API_BASE_URL}/api/auth/logout`, {
         method: 'POST',
@@ -164,7 +166,43 @@ export default function App() {
       setUserEmail('');
       navigate('/');
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    const SUPER_ADMIN_IDLE_MS = 10 * 60 * 1000;
+    if (!isAuthenticated || role !== 'super_admin') {
+      if (superAdminIdleTimerRef.current) {
+        clearTimeout(superAdminIdleTimerRef.current);
+      }
+      return;
+    }
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+      if (superAdminIdleTimerRef.current) {
+        clearTimeout(superAdminIdleTimerRef.current);
+      }
+      superAdminIdleTimerRef.current = setTimeout(() => {
+        const idleForMs = Date.now() - lastActivityRef.current;
+        if (idleForMs >= SUPER_ADMIN_IDLE_MS) {
+          handleLogout();
+        } else {
+          resetTimer();
+        }
+      }, SUPER_ADMIN_IDLE_MS);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+    events.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+      if (superAdminIdleTimerRef.current) {
+        clearTimeout(superAdminIdleTimerRef.current);
+      }
+    };
+  }, [isAuthenticated, role, handleLogout]);
 
   const navItemsByRole: Record<UserRole, NavItem[]> = useMemo(
     () => ({
@@ -296,7 +334,7 @@ export default function App() {
             }}
           ></div>
         </div>
-        <div className="relative z-10 w-full max-w-md flex justify-center">
+        <div className="relative z-10 w-full max-w-4xl flex justify-center">
           <RegistrationErrorBoundary>
             <StudentRegistrationForm />
           </RegistrationErrorBoundary>
