@@ -169,8 +169,11 @@ const register = async (req, res) => {
         });
       }
 
-      if (!normalizedEmail.includes('phinmaed')) {
-        return res.status(400).json({ error: 'Please use your PHINMAED email address' });
+      const allowedEmail =
+        normalizedEmail.endsWith('@phinmaed.com') ||
+        normalizedEmail.endsWith('@phinmaed.edu.ph');
+      if (!allowedEmail) {
+        return res.status(400).json({ error: 'Please use your PHINMAED email address (e.g. @phinmaed.com)' });
       }
     }
 

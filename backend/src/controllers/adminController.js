@@ -7,6 +7,7 @@ const ArchiveRequest = require('../models/ArchiveRequest');
 const AuditLog = require('../models/AuditLog');
 const SystemSettings = require('../models/SystemSettings');
 const InviteToken = require('../models/InviteToken');
+const ScheduleChangeRequest = require('../models/ScheduleChangeRequest');
 
 const trimIfString = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -1034,6 +1035,113 @@ const createInvite = async (req, res) => {
   }
 };
 
+const listScheduleChangeRequests = async (req, res) => {
+  try {
+    const { isSuperAdmin, blocks: handledBlocks } = getHandledBlocksForUser(req.user);
+
+    const query = {};
+    if (!isSuperAdmin && handledBlocks.length > 0) {
+      query.block = { $in: handledBlocks };
+    }
+
+    const requests = await ScheduleChangeRequest.aggregate([
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userDoc',
+        },
+      },
+      { $unwind: '$userDoc' },
+      {
+        $addFields: {
+          studentName: '$userDoc.name',
+          block: '$userDoc.block',
+        },
+      },
+      { $match: query },
+      { $sort: { createdAt: -1 } },
+      { $limit: 100 },
+    ]);
+
+    const out = requests.map((r) => ({
+      id: r._id,
+      studentName: r.studentName || '',
+      block: r.block || '',
+      courseName: r.courseName,
+      currentSchedule: r.currentSchedule || '',
+      currentRoom: r.currentRoom || '',
+      requestedSchedule: r.requestedSchedule || '',
+      requestedRoom: r.requestedRoom || '',
+      status: r.status,
+      createdAt: r.createdAt,
+    }));
+
+    return res.json({ requests: out });
+  } catch (error) {
+    console.error('List schedule change requests error:', error);
+    return res.status(500).json({ error: 'Failed to fetch schedule change requests' });
+  }
+};
+
+const updateScheduleChangeRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, adminNote } = req.body;
+    if (!['approved', 'rejected', 'pending'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const doc = await ScheduleChangeRequest.findById(id);
+    if (!doc) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    doc.status = status;
+    if (typeof adminNote === 'string') {
+      doc.adminNote = adminNote.trim();
+    }
+
+    if (status === 'approved') {
+      const user = await User.findById(doc.user);
+      if (user && Array.isArray(user.comCourses)) {
+        user.comCourses = user.comCourses.map((course) => {
+          const name = trimIfString(course.courseName);
+          if (!name || name !== doc.courseName) return course;
+          return {
+            ...course.toObject?.() || course,
+            schedule: doc.requestedSchedule || course.schedule,
+            room: doc.requestedRoom || course.room,
+          };
+        });
+        await user.save();
+      }
+    }
+
+    await doc.save();
+
+    await logAudit(
+      'Schedule Change Reviewed',
+      req.user.email,
+      `Schedule change for ${doc.courseName} set to ${status}`,
+      'Success'
+    );
+
+    return res.json({
+      message: 'Request updated',
+      request: {
+        id: doc._id,
+        status: doc.status,
+        adminNote: doc.adminNote || '',
+      },
+    });
+  } catch (error) {
+    console.error('Update schedule change request error:', error);
+    return res.status(500).json({ error: 'Failed to update schedule change request' });
+  }
+};
+
 module.exports = {
   getOverview,
   getScheduleSummary,
@@ -1052,4 +1160,6 @@ module.exports = {
   getSettings,
   updateSettings,
   createInvite,
+  listScheduleChangeRequests,
+  updateScheduleChangeRequest,
 };

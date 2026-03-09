@@ -13,6 +13,7 @@ const authRoutes = require('./routes/auth');
 const studentRoutes = require('./routes/students');
 const adminRoutes = require('./routes/admin');
 const iotRoutes = require('./routes/iot');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/iot', iotRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 /* Ensure all errors return JSON (prevents "invalid response" on frontend) */
 app.use((err, req, res, next) => {

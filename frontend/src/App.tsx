@@ -16,6 +16,8 @@ import {
   Settings,
   StudentAttendance,
   StudentProfile,
+  StudentSchedule,
+  ScheduleChangeRequests,
   UserManagement,
 } from './components/dashboard';
 import type { UserRole } from './types/rbac';
@@ -208,12 +210,14 @@ export default function App() {
     () => ({
       student: [
         { id: 'student-attendance', label: 'My Attendance', icon: ClipboardList },
+        { id: 'student-schedule', label: 'My Schedule', icon: CalendarDays },
         { id: 'student-profile', label: 'Profile & Security', icon: UserCircle },
         { id: 'student-report', label: 'Report an Issue', icon: MessageSquareWarning },
       ],
       admin: [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'schedule', label: 'Class Schedule', icon: CalendarDays },
+        { id: 'schedule-requests', label: 'Schedule Requests', icon: ClipboardList },
         { id: 'invite-students', label: 'Invite Students', icon: Link2 },
         { id: 'archive-requests', label: 'Archive Requests', icon: ClipboardList },
       ],
@@ -221,6 +225,7 @@ export default function App() {
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'users', label: 'User Management', icon: Users },
         { id: 'reports', label: 'Reports & Analytics', icon: FileText },
+        { id: 'schedule-requests', label: 'Schedule Requests', icon: ClipboardList },
         { id: 'invite-students', label: 'Invite Students', icon: Link2 },
         { id: 'archive-requests', label: 'Archive Requests', icon: ClipboardList },
         { id: 'settings', label: 'System Configuration', icon: SettingsIcon },
@@ -235,12 +240,14 @@ export default function App() {
     () => ({
       student: [
         { id: 'student-attendance', path: '/student/attendance', element: <StudentAttendance /> },
+        { id: 'student-schedule', path: '/student/schedule', element: <StudentSchedule /> },
         { id: 'student-profile', path: '/student/profile', element: <StudentProfile /> },
         { id: 'student-report', path: '/student/report', element: <AppReports mode="submit" /> },
       ],
       admin: [
         { id: 'overview', path: '/admin/overview', element: <Overview role="admin" /> },
         { id: 'schedule', path: '/admin/schedule', element: <Schedule role="admin" /> },
+        { id: 'schedule-requests', path: '/admin/schedule-requests', element: <ScheduleChangeRequests /> },
         { id: 'reports', path: '/admin/reports', element: <Reports role={role} /> },
         { id: 'invite-students', path: '/admin/invite-students', element: <InviteStudents /> },
         {
@@ -253,6 +260,7 @@ export default function App() {
         { id: 'overview', path: '/super-admin/overview', element: <Overview role="super_admin" /> },
         { id: 'users', path: '/super-admin/users', element: <UserManagement /> },
         { id: 'reports', path: '/super-admin/reports', element: <Reports role={role} /> },
+        { id: 'schedule-requests', path: '/super-admin/schedule-requests', element: <ScheduleChangeRequests /> },
         { id: 'invite-students', path: '/super-admin/invite-students', element: <InviteStudents /> },
         {
           id: 'archive-requests',

@@ -20,6 +20,8 @@ const {
   getSettings,
   updateSettings,
   createInvite,
+  listScheduleChangeRequests,
+  updateScheduleChangeRequest,
 } = require('../controllers/adminController');
 
 router.use(authenticate);
@@ -32,6 +34,8 @@ router.get('/reports/block-details', getReportBlockDetails);
 router.get('/archive-requests', listArchiveRequests);
 router.post('/archive-requests', createArchiveRequest);
 router.patch('/archive-requests/:id', requireSuperAdmin, updateArchiveRequest);
+router.get('/schedule-change-requests', listScheduleChangeRequests);
+router.patch('/schedule-change-requests/:id', updateScheduleChangeRequest);
 
 router.get('/available-blocks', requireSuperAdmin, getAvailableBlocks);
 router.get('/users', requireSuperAdmin, listUsers);

@@ -10,6 +10,8 @@ const {
   getAttendance,
   submitReport,
   getReports,
+  getCourses,
+  requestScheduleChange,
 } = require('../controllers/studentController');
 
 router.get('/profile', authenticate, getProfile);
@@ -19,5 +21,7 @@ router.get('/attendance', authenticate, getAttendance);
 router.post('/attendance', authenticate, recordAttendance);
 router.post('/reports', authenticate, submitReport);
 router.get('/reports', authenticate, getReports);
+router.get('/courses', authenticate, getCourses);
+router.post('/schedule-change-requests', authenticate, requestScheduleChange);
 
 module.exports = router;

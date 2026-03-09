@@ -35,6 +35,29 @@ const SUBJECT_OPTIONS = [
   'ITE 359 - Networking 2',
   'ITE 383 - Network Security',
   'ITE 401 - Platform Technologies',
+  // Minor subjects
+  'MAT 152 - Mathematics in the Modern World',
+  'NST 015 - National Service Training Program 1',
+  'PED 030 - Physical Activities Toward Health and Fitness (PATHFit 1): Movement Competency Training',
+  'ART 002 - Art Appreciation',
+  'NST 016 - National Service Training Program 2',
+  'PED 031 - Physical Activities Toward Health and Fitness (PATHFit 2): Exercise-Based Fitness Activities',
+  'HIS 007 - Life and Works of Rizal',
+  'PED 032 - Physical Activities Toward Health and Fitness (PATHFit 3): Individual and Dual Sports',
+  'SSP 005 - Student Success Program 1',
+  'PED 033 - Physical Activities Toward Health and Fitness (PATHFit 4): Team Sports',
+  'SSP 006 - Student Success Program 2',
+  'SSP 007 - Student Success Program 3',
+  // General subjects
+  'GEN 001 - Purposive Communication',
+  'GEN 002 - Understanding the Self',
+  'GEN 006 - Ethics',
+  'GEN 005 - The Contemporary World',
+  'GEN 008 - Living in the IT Era',
+  'GEN 003 - Science, Technology and Society',
+  'GEN 004 - Readings in Philippine History',
+  'GEN 009 - The Entrepreneurial Mind',
+  "GEN 013 - People and Earth's Ecosystems",
 ];
 
 const DAY_OPTIONS = [
@@ -114,6 +137,38 @@ const buildTimeLabel = (type: 'preset' | 'custom', slot: string, start: string, 
     return `${formatTime12(start)} - ${formatTime12(end)}`;
   }
   return slot || '';
+};
+
+const getPasswordFeedback = (password: string) => {
+  const lengthOk = password.length >= 8;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSymbol = /[^A-Za-z0-9]/.test(password);
+
+  const missing: string[] = [];
+  if (!lengthOk) missing.push(`${8 - password.length} more characters`);
+  if (!hasUpper) missing.push('1 uppercase letter');
+  if (!hasLower) missing.push('1 lowercase letter');
+  if (!hasNumber) missing.push('1 number');
+  if (!hasSymbol) missing.push('1 symbol character');
+
+  let strengthScore = 0;
+  if (lengthOk) strengthScore += 1;
+  if (hasUpper) strengthScore += 1;
+  if (hasLower) strengthScore += 1;
+  if (hasNumber) strengthScore += 1;
+  if (hasSymbol) strengthScore += 1;
+
+  let strengthLabel = 'Very Poor';
+  if (strengthScore >= 4) strengthLabel = 'Strong';
+  else if (strengthScore === 3) strengthLabel = 'Good';
+  else if (strengthScore === 2) strengthLabel = 'Weak';
+
+  return {
+    missing,
+    strengthLabel,
+  };
 };
 
 export function StudentRegistrationForm() {
@@ -222,8 +277,11 @@ export function StudentRegistrationForm() {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail.includes('phinmaed')) {
-      setError('Please use your PHINMAED email address.');
+    const isAllowedEmail =
+      normalizedEmail.endsWith('@phinmaed.com') ||
+      normalizedEmail.endsWith('@phinmaed.edu.ph');
+    if (!isAllowedEmail) {
+      setError('Please use your PHINMAED email address (e.g. @phinmaed.com).');
       return false;
     }
 
@@ -636,7 +694,7 @@ export function StudentRegistrationForm() {
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
-                    placeholder="student@phinmaed.edu.ph"
+                  placeholder="student@phinmaed.com"
                     required
                     className="w-full pl-11 pr-4 py-3 rounded-lg border border-neutral-300 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 outline-none transition-all text-neutral-900 placeholder:text-neutral-400"
                   />
@@ -668,9 +726,20 @@ export function StudentRegistrationForm() {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Min 8 chars, uppercase, lowercase, number, special character (!@#$%^&*)
-                </p>
+                {(() => {
+                  const feedback = getPasswordFeedback(password);
+                  const missingText = feedback.missing.length ? feedback.missing.join(', ') : 'All requirements met';
+                  return (
+                    <div className="mt-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                      <p className="text-xs text-neutral-500">
+                        {missingText}
+                      </p>
+                      <p className="text-xs text-neutral-600">
+                        Strength: <span className="font-medium">{feedback.strengthLabel}</span>
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
