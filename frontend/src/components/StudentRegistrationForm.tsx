@@ -48,6 +48,7 @@ const SUBJECT_OPTIONS = [
   'PED 033 - Physical Activities Toward Health and Fitness (PATHFit 4): Team Sports',
   'SSP 006 - Student Success Program 2',
   'SSP 007 - Student Success Program 3',
+  'SSP 008 - Student Success Program 4',
   // General subjects
   'GEN 001 - Purposive Communication',
   'GEN 002 - Understanding the Self',
@@ -199,6 +200,11 @@ export function StudentRegistrationForm() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [selectedSubjects, setSelectedSubjects] = useState([] as string[]);
   const [courses, setCourses] = useState([] as CourseSchedule[]);
+  const [scheduleEnrollmentMode, setScheduleEnrollmentMode] = useState<'manual' | 'official'>('manual');
+  const [officialScheduleLoading, setOfficialScheduleLoading] = useState(false);
+  const [officialScheduleCourses, setOfficialScheduleCourses] = useState(
+    [] as { courseName: string; schedule: string; room: string }[]
+  );
 
   const maxCoursesReached = selectedSubjects.length >= 12;
 
@@ -239,6 +245,38 @@ export function StudentRegistrationForm() {
   useEffect(() => {
     if (prefillEmail) setEmail(prefillEmail);
   }, [prefillEmail]);
+
+  useEffect(() => {
+    if (!block.trim()) {
+      setOfficialScheduleCourses([]);
+      return;
+    }
+    const ac = new AbortController();
+    setOfficialScheduleLoading(true);
+    fetch(
+      `${API_BASE_URL}/api/public/block-master-schedule?block=${encodeURIComponent(block.trim())}`,
+      { signal: ac.signal }
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (ac.signal.aborted) return;
+        const list = Array.isArray(data.courses) ? data.courses : [];
+        setOfficialScheduleCourses(list);
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setOfficialScheduleCourses([]);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setOfficialScheduleLoading(false);
+      });
+    return () => ac.abort();
+  }, [block]);
+
+  useEffect(() => {
+    if (scheduleEnrollmentMode === 'official' && officialScheduleCourses.length === 0) {
+      setScheduleEnrollmentMode('manual');
+    }
+  }, [officialScheduleCourses, scheduleEnrollmentMode]);
 
   useEffect(() => {
     setCourses((prev) => {
@@ -290,14 +328,23 @@ export function StudentRegistrationForm() {
       return false;
     }
 
-    if (selectedSubjects.length === 0) {
-      setError('Please select at least one subject from your COM receipt.');
-      return false;
-    }
+    if (scheduleEnrollmentMode === 'official') {
+      if (officialScheduleCourses.length === 0) {
+        setError(
+          'No published master schedule for this block. Pick another block, enter subjects manually, or ask your Program Head to publish the timetable.'
+        );
+        return false;
+      }
+    } else {
+      if (selectedSubjects.length === 0) {
+        setError('Please select at least one subject from your COM receipt.');
+        return false;
+      }
 
-    if (selectedSubjects.length > 12) {
-      setError('You can only register up to 12 subjects.');
-      return false;
+      if (selectedSubjects.length > 12) {
+        setError('You can only register up to 12 subjects.');
+        return false;
+      }
     }
 
     return true;
@@ -308,6 +355,53 @@ export function StudentRegistrationForm() {
     setSuccessMessage(null);
     if (!validateStepOne()) return;
     setCurrentStep('schedule');
+  };
+
+  const handleOfficialRegister = async () => {
+    setError(null);
+    setSuccessMessage(null);
+    if (!validateStepOne()) return;
+
+    const confirmed = window.confirm(
+      'Submit registration using the official published schedule for your block? Your subject list will match the Program Head master timetable.'
+    );
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const formattedName = `${lastName.trim()}, ${firstName.trim()}${middleInitial.trim()
+        ? ` ${middleInitial.trim()}.`
+        : ''}`;
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: tokenFromUrl,
+          role: 'student',
+          name: formattedName,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          middleInitial: middleInitial.trim(),
+          idNumber: idNumber.trim(),
+          block,
+          email: normalizedEmail,
+          password,
+          comCourses: [],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Registration failed');
+      }
+      setIsLocked(true);
+      setFingerprintId(typeof data.fingerprintId === 'string' ? data.fingerprintId : null);
+      setSuccessMessage('Registration successful. Save your fingerprint ID below.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during registration');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSubmit = async (event: { preventDefault: () => void }) => {
@@ -683,6 +777,61 @@ export function StudentRegistrationForm() {
                 </div>
               </div>
 
+              {block.trim() ? (
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 space-y-2">
+                  <p className="text-sm font-medium text-neutral-800">Subject &amp; schedule source</p>
+                  {officialScheduleLoading ? (
+                    <p className="text-xs text-neutral-500">Checking for a published master timetable…</p>
+                  ) : officialScheduleCourses.length > 0 ? (
+                    <>
+                      <p className="text-xs text-neutral-600">
+                        Your block has an official timetable ({officialScheduleCourses.length} courses). You can load it
+                        automatically or enter subjects from your COM receipt.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setScheduleEnrollmentMode('official')}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                            scheduleEnrollmentMode === 'official'
+                              ? 'border-emerald-600 bg-emerald-50 text-emerald-900'
+                              : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300'
+                          }`}
+                        >
+                          Use official block schedule
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScheduleEnrollmentMode('manual')}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                            scheduleEnrollmentMode === 'manual'
+                              ? 'border-neutral-900 bg-neutral-900 text-white'
+                              : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300'
+                          }`}
+                        >
+                          Enter manually from COM
+                        </button>
+                      </div>
+                      {scheduleEnrollmentMode === 'official' && (
+                        <ul className="mt-1 max-h-28 overflow-y-auto text-xs text-neutral-600 space-y-0.5 border border-neutral-100 rounded-md bg-white p-2">
+                          {officialScheduleCourses.map((c, i) => (
+                            <li key={`${c.courseName}-${i}`}>
+                              <span className="font-medium text-neutral-800">{c.courseName}</span>
+                              {c.schedule ? ` · ${c.schedule}` : ''}
+                              {c.room ? ` · ${c.room}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-neutral-500">
+                      No official timetable for this block yet. Select subjects from your COM receipt below.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
               <div>
                 <label htmlFor="student-email" className="block text-sm font-medium text-neutral-700 mb-2">
                   PHINMAED Email
@@ -768,52 +917,65 @@ export function StudentRegistrationForm() {
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-neutral-700">COM Subjects</p>
-                    <p className="text-xs text-neutral-500">Select the subjects listed on your COM receipt.</p>
+              {scheduleEnrollmentMode === 'manual' ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-neutral-700">COM Subjects</p>
+                      <p className="text-xs text-neutral-500">Select the subjects listed on your COM receipt.</p>
+                    </div>
+                    <span className="text-xs text-neutral-500">{selectedSubjects.length}/12 selected</span>
                   </div>
-                  <span className="text-xs text-neutral-500">{selectedSubjects.length}/12 selected</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {SUBJECT_OPTIONS.map((subject) => {
+                      const isSelected = selectedSubjects.includes(subject);
+                      return (
+                        <label
+                          key={subject}
+                          className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                              : 'border-neutral-200 text-neutral-700 hover:border-neutral-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleSubjectToggle(subject)}
+                            className="mt-1"
+                          />
+                          <div className="flex items-start gap-2">
+                            <BookOpen className="w-4 h-4 text-neutral-400 mt-0.5" />
+                            <span>{subject}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {maxCoursesReached && (
+                    <p className="text-xs text-amber-600">You have reached the 12-subject limit.</p>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {SUBJECT_OPTIONS.map((subject) => {
-                    const isSelected = selectedSubjects.includes(subject);
-                    return (
-                      <label
-                        key={subject}
-                        className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
-                            : 'border-neutral-200 text-neutral-700 hover:border-neutral-300'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleSubjectToggle(subject)}
-                          className="mt-1"
-                        />
-                        <div className="flex items-start gap-2">
-                          <BookOpen className="w-4 h-4 text-neutral-400 mt-0.5" />
-                          <span>{subject}</span>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-                {maxCoursesReached && (
-                  <p className="text-xs text-amber-600">You have reached the 12-subject limit.</p>
-                )}
-              </div>
+              ) : null}
 
-              <button
-                type="button"
-                onClick={handleNextStep}
-                className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all"
-              >
-                Next: Add schedules
-              </button>
+              {scheduleEnrollmentMode === 'official' ? (
+                <button
+                  type="button"
+                  onClick={handleOfficialRegister}
+                  disabled={isLoading}
+                  className="w-full py-3 rounded-lg bg-emerald-700 text-white font-medium hover:bg-emerald-800 focus:ring-4 focus:ring-emerald-900/20 transition-all disabled:opacity-60"
+                >
+                  {isLoading ? 'Submitting…' : 'Submit registration (official schedule)'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  className="w-full py-3 rounded-lg bg-neutral-900 text-white font-medium hover:bg-neutral-800 focus:ring-4 focus:ring-neutral-900/20 transition-all"
+                >
+                  Next: Add schedules
+                </button>
+              )}
 
               <button
                 type="button"

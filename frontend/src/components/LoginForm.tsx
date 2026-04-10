@@ -49,6 +49,8 @@ export function LoginForm({
         return 'ADMIN ID';
       case 'super_admin':
         return 'This is a prohibited area';
+      case 'program_head':
+        return 'Program Head email';
       default:
         return 'email@example.com';
     }

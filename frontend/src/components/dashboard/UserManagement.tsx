@@ -258,7 +258,8 @@ export function UserManagement() {
                     <Label htmlFor="role" className="text-right">Role</Label>
                     <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={addRole} onChange={(e) => { setAddRole(e.target.value); if (e.target.value !== 'admin') setAddHandledBlocks([]); }}>
                       <option value="student">Student</option>
-                      <option value="admin">Admin (Teacher)</option>
+                      <option value="admin">Professor</option>
+                      <option value="program_head">Program Head</option>
                       <option value="super_admin">Super Admin (Developer)</option>
                     </select>
                   </div>
@@ -333,7 +334,8 @@ export function UserManagement() {
                 <Label htmlFor="edit-role" className="text-right">Role</Label>
                 <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={editRole} onChange={(e) => { setEditRole(e.target.value); if (e.target.value !== 'admin') setEditHandledBlocks([]); }}>
                   <option value="student">Student</option>
-                  <option value="admin">Admin (Teacher)</option>
+                  <option value="admin">Professor</option>
+                  <option value="program_head">Program Head</option>
                   <option value="super_admin">Super Admin (Developer)</option>
                 </select>
               </div>
@@ -438,6 +440,8 @@ export function UserManagement() {
                   <div className="flex items-center gap-2">
                     {user.role === 'super_admin' || user.roleLabel === 'Super Admin (Developer)' ? (
                       <Shield className="w-4 h-4 text-purple-600" />
+                    ) : user.role === 'program_head' ? (
+                      <Shield className="w-4 h-4 text-amber-600" />
                     ) : (
                       <User className="w-4 h-4 text-blue-600" />
                     )}

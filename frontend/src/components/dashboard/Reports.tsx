@@ -194,7 +194,7 @@ export function Reports({ role }: { role: UserRole }) {
   const description =
     role === 'admin'
       ? 'Summary reports for the classes you handle.'
-      : 'Generate and export attendance reports.';
+      : 'Generate and export attendance reports. Data is loaded directly from the attendance database with indexed queries for faster results.';
 
   return (
     <div className="space-y-6">
