@@ -11,4 +11,5 @@ export { AppReports } from './AppReports';
 export { ArchiveRequests } from './ArchiveRequests';
 export { InviteStudents } from './InviteStudents';
 export { Schedule } from './Schedule';
+export { MasterSchedule } from './MasterSchedule';
 export { ScheduleChangeRequests } from './ScheduleChangeRequests';

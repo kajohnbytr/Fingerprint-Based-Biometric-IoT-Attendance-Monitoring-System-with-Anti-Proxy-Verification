@@ -6,6 +6,7 @@ const AuditLog = require('../models/AuditLog');
 const SystemSettings = require('../models/SystemSettings');
 const { validatePassword } = require('../utils/passwordPolicy');
 const { sendRegistrationToGoogleSheets } = require('../utils/googleSheets');
+const { comCoursesFromMasterBlock } = require('./masterScheduleController');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secretkey';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -13,6 +14,7 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const normalizeRole = (roles) => {
   if (!roles || !Array.isArray(roles)) return 'admin';
   if (roles.includes('super_admin')) return 'super_admin';
+  if (roles.includes('program_head')) return 'program_head';
   if (roles.includes('student')) return 'student';
   return 'admin';
 };
@@ -138,7 +140,7 @@ const register = async (req, res) => {
           ]
         : [];
 
-    const finalComCourses = normalizedComCourses.length > 0 ? normalizedComCourses : fallbackComCourse;
+    let finalComCourses = normalizedComCourses.length > 0 ? normalizedComCourses : fallbackComCourse;
 
     if (normalizedRole === 'student') {
       if (!name || !idNumber || !block) {
@@ -149,9 +151,18 @@ const register = async (req, res) => {
         return res.status(400).json({ error: 'ID number must contain only numbers and dashes (e.g. 03-2324-035749)' });
       }
 
+      const blockTrim = typeof block === 'string' ? block.trim() : '';
+      if (finalComCourses.length === 0 && blockTrim) {
+        const fromMaster = await comCoursesFromMasterBlock(blockTrim);
+        if (fromMaster.length > 0) {
+          finalComCourses = fromMaster;
+        }
+      }
+
       if (finalComCourses.length === 0) {
         return res.status(400).json({
-          error: 'At least one COM course with schedule and room is required',
+          error:
+            'Add your courses on the form, or ask your Program Head to publish a master schedule for your block so your subjects can load automatically.',
         });
       }
 
@@ -388,7 +399,7 @@ const me = async (req, res) => {
   try {
     const role = normalizeRole(req.user.roles);
     const payload = { user: { email: req.user.email, role } };
-    if (role === 'admin' || role === 'super_admin') {
+    if (role === 'admin' || role === 'super_admin' || role === 'program_head') {
       payload.user.name = req.user.name || '';
       payload.user.handledBlocks = Array.isArray(req.user.handledBlocks)
         ? req.user.handledBlocks.filter((b) => typeof b === 'string' && b.trim())

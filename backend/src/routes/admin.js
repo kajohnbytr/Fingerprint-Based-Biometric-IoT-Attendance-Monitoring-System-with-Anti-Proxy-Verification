@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const { authenticate, requireRole, requireSuperAdmin } = require('../middleware/auth');
+const { authenticate, requireRole, requireSuperAdmin, requireProgramHeadOrSuper } = require('../middleware/auth');
+const masterScheduleController = require('../controllers/masterScheduleController');
 const {
   getOverview,
   getScheduleSummary,
@@ -25,9 +26,14 @@ const {
 } = require('../controllers/adminController');
 
 router.use(authenticate);
-router.use(requireRole(['admin', 'super_admin']));
+router.use(requireRole(['admin', 'super_admin', 'program_head']));
 
 router.get('/overview', getOverview);
+router.get('/master-schedule', masterScheduleController.listMasterSchedule);
+router.post('/master-schedule', requireProgramHeadOrSuper, masterScheduleController.createMasterSchedule);
+router.patch('/master-schedule/:id', masterScheduleController.patchMasterSchedule);
+router.delete('/master-schedule/:id', requireProgramHeadOrSuper, masterScheduleController.deleteMasterSchedule);
+router.post('/master-schedule/sync', requireProgramHeadOrSuper, masterScheduleController.syncBlocks);
 router.get('/schedule-summary', getScheduleSummary);
 router.get('/reports', getReports);
 router.get('/reports/block-details', getReportBlockDetails);

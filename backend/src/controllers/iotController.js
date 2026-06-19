@@ -31,7 +31,7 @@ const recordAttendance = async (req, res) => {
         email: email.toLowerCase().trim(),
         $and: [
           { roles: 'student' },
-          { roles: { $nin: ['admin', 'super_admin'] } },
+          { roles: { $nin: ['admin', 'super_admin', 'program_head'] } },
         ],
       });
     } else if (webauthnCredentialId && trimIfString(webauthnCredentialId)) {
@@ -40,7 +40,7 @@ const recordAttendance = async (req, res) => {
         webauthnCredentialId: webauthnCredentialId.trim(),
         $and: [
           { roles: 'student' },
-          { roles: { $nin: ['admin', 'super_admin'] } },
+          { roles: { $nin: ['admin', 'super_admin', 'program_head'] } },
         ],
       });
     } else {
@@ -129,7 +129,7 @@ const matchFingerprint = async (req, res) => {
         webauthnCredentialId: webauthnCredentialId.trim(),
         $and: [
           { roles: 'student' },
-          { roles: { $nin: ['admin', 'super_admin'] } },
+          { roles: { $nin: ['admin', 'super_admin', 'program_head'] } },
         ],
       }).select('_id email name idNumber webauthnCredentialId');
     } else if (fingerprint && typeof fingerprint === 'string' && fingerprint.trim()) {
@@ -139,7 +139,7 @@ const matchFingerprint = async (req, res) => {
         fingerprint: fingerprint.trim(),
         $and: [
           { roles: 'student' },
-          { roles: { $nin: ['admin', 'super_admin'] } },
+          { roles: { $nin: ['admin', 'super_admin', 'program_head'] } },
         ],
       }).select('_id email name idNumber webauthnCredentialId');
     }
