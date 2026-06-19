@@ -7,12 +7,15 @@ const ArchiveRequest = require('../models/ArchiveRequest');
 const AuditLog = require('../models/AuditLog');
 const SystemSettings = require('../models/SystemSettings');
 const InviteToken = require('../models/InviteToken');
+const ScheduleChangeRequest = require('../models/ScheduleChangeRequest');
 
 const trimIfString = (v) => (typeof v === 'string' ? v.trim() : '');
 
 const getHandledBlocksForUser = (user) => {
   const isSuperAdmin = user?.roles?.includes?.('super_admin');
-  if (isSuperAdmin) return { isSuperAdmin: true, blocks: [] };
+  const isProgramHead = user?.roles?.includes?.('program_head');
+  /** Program Head sees institution-wide aggregates (same block resolution as super admin). */
+  if (isSuperAdmin || isProgramHead) return { isSuperAdmin: true, blocks: [] };
 
   const rawBlocks = Array.isArray(user?.handledBlocks) ? user.handledBlocks : [];
   const blocks = rawBlocks.map((b) => trimIfString(b)).filter(Boolean);
@@ -50,7 +53,7 @@ const getOverview = async (req, res) => {
     const studentFilter = {
       $and: [
         { roles: 'student' },
-        { roles: { $nin: ['admin', 'super_admin'] } },
+        { roles: { $nin: ['admin', 'super_admin', 'program_head'] } },
         // If this is a regular admin/teacher and they have handledBlocks configured,
         // only include students from those blocks.
         ...(!isSuperAdminUser && handledBlocks.length > 0
@@ -283,7 +286,7 @@ const getScheduleSummary = async (req, res) => {
     const studentFilter = {
       $and: [
         { roles: 'student' },
-        { roles: { $nin: ['admin', 'super_admin'] } },
+        { roles: { $nin: ['admin', 'super_admin', 'program_head'] } },
         { block: { $in: blockList } },
       ],
     };
@@ -364,7 +367,7 @@ const getReports = async (req, res) => {
     const studentFilter = {
       $and: [
         { roles: 'student' },
-        { roles: { $nin: ['admin', 'super_admin'] } },
+        { roles: { $nin: ['admin', 'super_admin', 'program_head'] } },
         ...(!isSuperAdmin && handledBlocks.length > 0
           ? [{ block: { $in: handledBlocks } }]
           : []),
@@ -409,7 +412,19 @@ const getReports = async (req, res) => {
     const records = await Attendance.find({
       user: { $in: studentIds },
       date: { $gte: start, $lte: end },
-    }).populate('user', 'block');
+    })
+      .select('user date status')
+      .lean();
+
+    const blockByUserId = {};
+    if (studentIds.length > 0) {
+      const blockRows = await User.find({ _id: { $in: studentIds } })
+        .select('block')
+        .lean();
+      blockRows.forEach((u) => {
+        blockByUserId[String(u._id)] = normalizeBlock(u.block);
+      });
+    }
 
     const toDateStr = (date) => {
       const y = date.getFullYear();
@@ -469,7 +484,7 @@ const getReports = async (req, res) => {
     records.forEach((r) => {
       const d = r.date;
       const dateStr = toDateStr(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
-      const blk = normalizeBlock(r.user?.block);
+      const blk = blockByUserId[String(r.user)] || 'Unknown';
       const key = `${dateStr}|${blk}`;
       if (!byDateBlock[key]) {
         byDateBlock[key] = { date: dateStr, block: blk, present: 0, late: 0 };
@@ -528,7 +543,7 @@ const getReportBlockDetails = async (req, res) => {
     const baseFilter = {
       $and: [
         { roles: 'student' },
-        { roles: { $nin: ['admin', 'super_admin'] } },
+        { roles: { $nin: ['admin', 'super_admin', 'program_head'] } },
         ...(!isSuperAdmin && handledBlocks.length > 0
           ? [{ block: { $in: handledBlocks } }]
           : []),
@@ -748,7 +763,12 @@ const listUsers = async (req, res) => {
 
     const users = await User.find(filter).select('-password').sort({ createdAt: -1 });
 
-    const roleLabels = { student: 'Student', admin: 'Admin (Teacher)', super_admin: 'Super Admin (Developer)' };
+    const roleLabels = {
+      student: 'Student',
+      admin: 'Professor',
+      program_head: 'Program Head',
+      super_admin: 'Super Admin (Developer)',
+    };
 
     return res.json({
       users: users.map((u) => ({
@@ -781,7 +801,7 @@ const createUser = async (req, res) => {
       return res.status(400).json({ error: pwdCheck.error });
     }
 
-    const validRoles = ['student', 'admin', 'super_admin'];
+    const validRoles = ['student', 'admin', 'super_admin', 'program_head'];
     const finalRole = validRoles.includes(role) ? role : 'admin';
 
     const existing = await User.findOne({ email: email.toLowerCase().trim() });
@@ -803,7 +823,12 @@ const createUser = async (req, res) => {
 
     await logAudit('User Created', req.user.email, `Created user ${user.email} (${finalRole})`, 'Success');
 
-    const roleLabels = { student: 'Student', admin: 'Admin (Teacher)', super_admin: 'Super Admin (Developer)' };
+    const roleLabels = {
+      student: 'Student',
+      admin: 'Professor',
+      program_head: 'Program Head',
+      super_admin: 'Super Admin (Developer)',
+    };
     return res.status(201).json({
       message: 'User created',
       user: {
@@ -837,7 +862,7 @@ const updateUser = async (req, res) => {
       if (existing) return res.status(409).json({ error: 'Email already in use' });
       user.email = email.toLowerCase().trim();
     }
-    if (role && ['student', 'admin', 'super_admin'].includes(role)) {
+    if (role && ['student', 'admin', 'super_admin', 'program_head'].includes(role)) {
       user.roles = [role];
     }
 
@@ -845,7 +870,12 @@ const updateUser = async (req, res) => {
       if (Array.isArray(handledBlocks)) {
         user.handledBlocks = handledBlocks.map((b) => trimIfString(b)).filter(Boolean);
       }
-    } else if (role === 'super_admin' || user.roles?.[0] === 'super_admin') {
+    } else if (
+      role === 'super_admin' ||
+      user.roles?.[0] === 'super_admin' ||
+      role === 'program_head' ||
+      user.roles?.[0] === 'program_head'
+    ) {
       user.handledBlocks = [];
     }
 
@@ -853,7 +883,12 @@ const updateUser = async (req, res) => {
 
     await logAudit('User Updated', req.user.email, `Updated user ${user.email}`, 'Success');
 
-    const roleLabels = { student: 'Student', admin: 'Admin (Teacher)', super_admin: 'Super Admin (Developer)' };
+    const roleLabels = {
+      student: 'Student',
+      admin: 'Professor',
+      program_head: 'Program Head',
+      super_admin: 'Super Admin (Developer)',
+    };
     return res.json({
       message: 'User updated',
       user: {
@@ -1034,6 +1069,113 @@ const createInvite = async (req, res) => {
   }
 };
 
+const listScheduleChangeRequests = async (req, res) => {
+  try {
+    const { isSuperAdmin, blocks: handledBlocks } = getHandledBlocksForUser(req.user);
+
+    const query = {};
+    if (!isSuperAdmin && handledBlocks.length > 0) {
+      query.block = { $in: handledBlocks };
+    }
+
+    const requests = await ScheduleChangeRequest.aggregate([
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userDoc',
+        },
+      },
+      { $unwind: '$userDoc' },
+      {
+        $addFields: {
+          studentName: '$userDoc.name',
+          block: '$userDoc.block',
+        },
+      },
+      { $match: query },
+      { $sort: { createdAt: -1 } },
+      { $limit: 100 },
+    ]);
+
+    const out = requests.map((r) => ({
+      id: r._id,
+      studentName: r.studentName || '',
+      block: r.block || '',
+      courseName: r.courseName,
+      currentSchedule: r.currentSchedule || '',
+      currentRoom: r.currentRoom || '',
+      requestedSchedule: r.requestedSchedule || '',
+      requestedRoom: r.requestedRoom || '',
+      status: r.status,
+      createdAt: r.createdAt,
+    }));
+
+    return res.json({ requests: out });
+  } catch (error) {
+    console.error('List schedule change requests error:', error);
+    return res.status(500).json({ error: 'Failed to fetch schedule change requests' });
+  }
+};
+
+const updateScheduleChangeRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, adminNote } = req.body;
+    if (!['approved', 'rejected', 'pending'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const doc = await ScheduleChangeRequest.findById(id);
+    if (!doc) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    doc.status = status;
+    if (typeof adminNote === 'string') {
+      doc.adminNote = adminNote.trim();
+    }
+
+    if (status === 'approved') {
+      const user = await User.findById(doc.user);
+      if (user && Array.isArray(user.comCourses)) {
+        user.comCourses = user.comCourses.map((course) => {
+          const name = trimIfString(course.courseName);
+          if (!name || name !== doc.courseName) return course;
+          return {
+            ...course.toObject?.() || course,
+            schedule: doc.requestedSchedule || course.schedule,
+            room: doc.requestedRoom || course.room,
+          };
+        });
+        await user.save();
+      }
+    }
+
+    await doc.save();
+
+    await logAudit(
+      'Schedule Change Reviewed',
+      req.user.email,
+      `Schedule change for ${doc.courseName} set to ${status}`,
+      'Success'
+    );
+
+    return res.json({
+      message: 'Request updated',
+      request: {
+        id: doc._id,
+        status: doc.status,
+        adminNote: doc.adminNote || '',
+      },
+    });
+  } catch (error) {
+    console.error('Update schedule change request error:', error);
+    return res.status(500).json({ error: 'Failed to update schedule change request' });
+  }
+};
+
 module.exports = {
   getOverview,
   getScheduleSummary,
@@ -1052,4 +1194,6 @@ module.exports = {
   getSettings,
   updateSettings,
   createInvite,
+  listScheduleChangeRequests,
+  updateScheduleChangeRequest,
 };

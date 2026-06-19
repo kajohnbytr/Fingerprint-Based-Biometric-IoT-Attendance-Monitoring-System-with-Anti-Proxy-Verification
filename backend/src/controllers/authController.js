@@ -5,6 +5,8 @@ const InviteToken = require('../models/InviteToken');
 const AuditLog = require('../models/AuditLog');
 const SystemSettings = require('../models/SystemSettings');
 const { validatePassword } = require('../utils/passwordPolicy');
+const { sendRegistrationToGoogleSheets } = require('../utils/googleSheets');
+const { comCoursesFromMasterBlock } = require('./masterScheduleController');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secretkey';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -12,6 +14,7 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const normalizeRole = (roles) => {
   if (!roles || !Array.isArray(roles)) return 'admin';
   if (roles.includes('super_admin')) return 'super_admin';
+  if (roles.includes('program_head')) return 'program_head';
   if (roles.includes('student')) return 'student';
   return 'admin';
 };
@@ -55,6 +58,9 @@ const register = async (req, res) => {
       password,
       role,
       name,
+      firstName,
+      lastName,
+      middleInitial,
       idNumber,
       block,
       comCourse,
@@ -62,8 +68,11 @@ const register = async (req, res) => {
       comRoom,
       comCourses,
       fingerprint,
+      fingerprintTemplateId,
       webauthnCredentialId,
       webauthnPublicKey,
+      semester,
+      schoolYear,
     } = req.body;
 
     if (!email || !password) {
@@ -131,7 +140,7 @@ const register = async (req, res) => {
           ]
         : [];
 
-    const finalComCourses = normalizedComCourses.length > 0 ? normalizedComCourses : fallbackComCourse;
+    let finalComCourses = normalizedComCourses.length > 0 ? normalizedComCourses : fallbackComCourse;
 
     if (normalizedRole === 'student') {
       if (!name || !idNumber || !block) {
@@ -142,9 +151,18 @@ const register = async (req, res) => {
         return res.status(400).json({ error: 'ID number must contain only numbers and dashes (e.g. 03-2324-035749)' });
       }
 
+      const blockTrim = typeof block === 'string' ? block.trim() : '';
+      if (finalComCourses.length === 0 && blockTrim) {
+        const fromMaster = await comCoursesFromMasterBlock(blockTrim);
+        if (fromMaster.length > 0) {
+          finalComCourses = fromMaster;
+        }
+      }
+
       if (finalComCourses.length === 0) {
         return res.status(400).json({
-          error: 'At least one COM course with schedule and room is required',
+          error:
+            'Add your courses on the form, or ask your Program Head to publish a master schedule for your block so your subjects can load automatically.',
         });
       }
 
@@ -162,8 +180,11 @@ const register = async (req, res) => {
         });
       }
 
-      if (!normalizedEmail.includes('phinmaed')) {
-        return res.status(400).json({ error: 'Please use your PHINMAED email address' });
+      const allowedEmail =
+        normalizedEmail.endsWith('@phinmaed.com') ||
+        normalizedEmail.endsWith('@phinmaed.edu.ph');
+      if (!allowedEmail) {
+        return res.status(400).json({ error: 'Please use your PHINMAED email address (e.g. @phinmaed.com)' });
       }
     }
 
@@ -183,9 +204,85 @@ const register = async (req, res) => {
       comRoom: finalComCourses[0]?.room || (typeof comRoom === 'string' ? comRoom.trim() : ''),
       comCourses: finalComCourses,
       fingerprint: typeof fingerprint === 'string' ? fingerprint.trim() : '',
+      fingerprintTemplateId: typeof fingerprintTemplateId === 'string' ? fingerprintTemplateId.trim() : '',
       webauthnCredentialId: typeof webauthnCredentialId === 'string' ? webauthnCredentialId.trim() : '',
       webauthnPublicKey: typeof webauthnPublicKey === 'string' ? webauthnPublicKey.trim() : '',
     });
+
+    let fingerprintId = typeof newUser.fingerprintTemplateId === 'string'
+      ? newUser.fingerprintTemplateId.trim()
+      : '';
+    if (!fingerprintId) {
+      if (normalizedRole === 'student') {
+        const studentCount = await User.countDocuments({
+          roles: 'student',
+          roles: { $nin: ['admin', 'super_admin'] },
+        });
+        let candidate = Math.max(1, studentCount);
+        // Ensure uniqueness in case of manual edits or deletions.
+        while (await User.findOne({ fingerprintTemplateId: String(candidate), _id: { $ne: newUser._id } })) {
+          candidate += 1;
+        }
+        fingerprintId = String(candidate);
+      } else {
+        fingerprintId = newUser._id.toString();
+      }
+      newUser.fingerprintTemplateId = fingerprintId;
+      await newUser.save();
+    }
+
+    const nameText = typeof name === 'string' ? name.trim() : '';
+    let parsedLast = '';
+    let parsedFirst = '';
+    let parsedMiddle = '';
+    if (nameText.includes(',')) {
+      const parts = nameText.split(',');
+      parsedLast = (parts[0] || '').trim();
+      const rest = (parts[1] || '').trim().split(/\s+/);
+      parsedFirst = rest[0] || '';
+      parsedMiddle = (rest[1] || '').replace('.', '');
+    } else if (nameText) {
+      const parts = nameText.split(/\s+/);
+      parsedFirst = parts.shift() || '';
+      parsedLast = parts.join(' ');
+    }
+    const finalFirstName = typeof firstName === 'string' && firstName.trim() ? firstName.trim() : parsedFirst;
+    const finalLastName = typeof lastName === 'string' && lastName.trim() ? lastName.trim() : parsedLast;
+    const finalMiddleInitial = typeof middleInitial === 'string' && middleInitial.trim()
+      ? middleInitial.trim()
+      : parsedMiddle;
+
+    const sheetCoursesPayload = Array.isArray(comCourses)
+      ? comCourses
+          .map((course) => {
+            const courseName = typeof course?.courseName === 'string' ? course.courseName.trim() : '';
+            if (!courseName) return null;
+            const sepIdx = courseName.indexOf(' - ');
+            const subjectId = sepIdx >= 0 ? courseName.slice(0, sepIdx).trim() : courseName.trim();
+            return subjectId ? { subjectId } : null;
+          })
+          .filter(Boolean)
+      : [];
+
+    if (normalizedRole === 'student' && process.env.GOOGLE_APPS_SCRIPT_URL) {
+      try {
+        await sendRegistrationToGoogleSheets({
+          mode: 'register',
+          student: {
+            studentId: typeof idNumber === 'string' ? idNumber.trim() : '',
+            lastName: finalLastName,
+            firstName: finalFirstName,
+            middleInitial: finalMiddleInitial,
+            block: typeof block === 'string' ? block.trim() : '',
+            status: 'Active',
+            fingerprintId,
+          },
+          courses: sheetCoursesPayload,
+        });
+      } catch (sheetErr) {
+        console.error('Google Sheets sync failed:', sheetErr.message || sheetErr);
+      }
+    }
 
     if (normalizedRole === 'student' && inviteDoc) {
       const maxUses = typeof inviteDoc.maxUses === 'number' && inviteDoc.maxUses > 0 ? inviteDoc.maxUses : 1;
@@ -205,7 +302,8 @@ const register = async (req, res) => {
 
     res.status(201).json({
       message: 'User registered successfully',
-      user: { email: newUser.email, role: newUser.roles[0] }
+      user: { email: newUser.email, role: newUser.roles[0] },
+      fingerprintId
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -301,7 +399,7 @@ const me = async (req, res) => {
   try {
     const role = normalizeRole(req.user.roles);
     const payload = { user: { email: req.user.email, role } };
-    if (role === 'admin' || role === 'super_admin') {
+    if (role === 'admin' || role === 'super_admin' || role === 'program_head') {
       payload.user.name = req.user.name || '';
       payload.user.handledBlocks = Array.isArray(req.user.handledBlocks)
         ? req.user.handledBlocks.filter((b) => typeof b === 'string' && b.trim())

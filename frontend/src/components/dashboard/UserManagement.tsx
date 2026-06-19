@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Plus, 
   Search, 
@@ -7,7 +7,9 @@ import {
   Pencil, 
   Archive, 
   Shield, 
-  User 
+  User,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { 
   Table, 
@@ -55,6 +57,7 @@ export function UserManagement() {
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addPassword, setAddPassword] = useState('');
+  const [showAddPassword, setShowAddPassword] = useState(false);
   const [addRole, setAddRole] = useState('student');
   const [addHandledBlocks, setAddHandledBlocks] = useState<string[]>([]);
   const [editName, setEditName] = useState('');
@@ -228,7 +231,26 @@ export function UserManagement() {
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="password" className="text-right">Password</Label>
                     <div className="col-span-3 space-y-1">
-                      <Input id="password" type="password" placeholder="••••••••" minLength={8} value={addPassword} onChange={(e) => setAddPassword(e.target.value)} required />
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showAddPassword ? 'text' : 'password'}
+                          placeholder="••••••••"
+                          minLength={8}
+                          value={addPassword}
+                          onChange={(e) => setAddPassword(e.target.value)}
+                          required
+                          className="pr-11"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAddPassword((prev) => !prev)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                          aria-label={showAddPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showAddPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                       <p className="text-xs text-muted-foreground">Min 8 chars, uppercase, lowercase, number, special char</p>
                     </div>
                   </div>
@@ -236,7 +258,8 @@ export function UserManagement() {
                     <Label htmlFor="role" className="text-right">Role</Label>
                     <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={addRole} onChange={(e) => { setAddRole(e.target.value); if (e.target.value !== 'admin') setAddHandledBlocks([]); }}>
                       <option value="student">Student</option>
-                      <option value="admin">Admin (Teacher)</option>
+                      <option value="admin">Professor</option>
+                      <option value="program_head">Program Head</option>
                       <option value="super_admin">Super Admin (Developer)</option>
                     </select>
                   </div>
@@ -311,7 +334,8 @@ export function UserManagement() {
                 <Label htmlFor="edit-role" className="text-right">Role</Label>
                 <select className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={editRole} onChange={(e) => { setEditRole(e.target.value); if (e.target.value !== 'admin') setEditHandledBlocks([]); }}>
                   <option value="student">Student</option>
-                  <option value="admin">Admin (Teacher)</option>
+                  <option value="admin">Professor</option>
+                  <option value="program_head">Program Head</option>
                   <option value="super_admin">Super Admin (Developer)</option>
                 </select>
               </div>
@@ -416,6 +440,8 @@ export function UserManagement() {
                   <div className="flex items-center gap-2">
                     {user.role === 'super_admin' || user.roleLabel === 'Super Admin (Developer)' ? (
                       <Shield className="w-4 h-4 text-purple-600" />
+                    ) : user.role === 'program_head' ? (
+                      <Shield className="w-4 h-4 text-amber-600" />
                     ) : (
                       <User className="w-4 h-4 text-blue-600" />
                     )}

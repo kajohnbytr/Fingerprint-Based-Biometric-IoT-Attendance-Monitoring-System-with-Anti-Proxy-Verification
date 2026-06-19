@@ -1,6 +1,7 @@
-import React, { Component, useEffect, useMemo, useState } from 'react';
+import React, { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LoginForm } from './components/LoginForm';
+import { StaffPortalAccessGate } from './components/StaffPortalAccessGate';
 import { ForgotPasswordForm } from './components/ForgotPasswordForm';
 import { StudentRegistrationForm } from './components/StudentRegistrationForm';
 import { NotFound } from './components/NotFound';
@@ -13,9 +14,12 @@ import {
   Overview,
   Reports,
   Schedule,
+  MasterSchedule,
   Settings,
   StudentAttendance,
   StudentProfile,
+  StudentSchedule,
+  ScheduleChangeRequests,
   UserManagement,
 } from './components/dashboard';
 import type { UserRole } from './types/rbac';
@@ -30,6 +34,7 @@ import {
   MessageSquareWarning,
   Link2,
   CalendarDays,
+  TableProperties,
 } from 'lucide-react';
 
 import { API_BASE_URL } from './config';
@@ -89,6 +94,8 @@ export default function App() {
   const [currentView, setCurrentView] = useState('overview');
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const superAdminIdleTimerRef = useRef(null as any);
+  const lastActivityRef = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
   const isRegistrationRoute = location.pathname === '/register/student' || location.pathname.startsWith('/register/student/');
@@ -113,6 +120,7 @@ export default function App() {
       location.pathname === '/login/student' ||
       location.pathname === '/login/admin' ||
       location.pathname === '/login/super-admin' ||
+      location.pathname === '/login/program-head' ||
       location.pathname.startsWith('/login/') ||
       location.pathname === '/forgot-password';
 
@@ -135,7 +143,13 @@ export default function App() {
             setCurrentView(navItemsByRole[data.user.role][0]?.id ?? 'overview');
             setIsAuthenticated(true);
             const defaultPath = viewRoutesByRole[data.user.role][0]?.path ?? '/';
-            if (location.pathname === '/' || location.pathname === '/login/student' || location.pathname === '/login/admin' || location.pathname === '/login/super-admin') {
+            if (
+              location.pathname === '/' ||
+              location.pathname === '/login/student' ||
+              location.pathname === '/login/admin' ||
+              location.pathname === '/login/super-admin' ||
+              location.pathname === '/login/program-head'
+            ) {
               navigate(defaultPath, { replace: true });
             }
           }
@@ -150,7 +164,7 @@ export default function App() {
     checkAuth();
   }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await fetch(`${API_BASE_URL}/api/auth/logout`, {
         method: 'POST',
@@ -164,25 +178,74 @@ export default function App() {
       setUserEmail('');
       navigate('/');
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    const SUPER_ADMIN_IDLE_MS = 10 * 60 * 1000;
+    if (!isAuthenticated || role !== 'super_admin') {
+      if (superAdminIdleTimerRef.current) {
+        clearTimeout(superAdminIdleTimerRef.current);
+      }
+      return;
+    }
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+      if (superAdminIdleTimerRef.current) {
+        clearTimeout(superAdminIdleTimerRef.current);
+      }
+      superAdminIdleTimerRef.current = setTimeout(() => {
+        const idleForMs = Date.now() - lastActivityRef.current;
+        if (idleForMs >= SUPER_ADMIN_IDLE_MS) {
+          handleLogout();
+        } else {
+          resetTimer();
+        }
+      }, SUPER_ADMIN_IDLE_MS);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+    events.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+      if (superAdminIdleTimerRef.current) {
+        clearTimeout(superAdminIdleTimerRef.current);
+      }
+    };
+  }, [isAuthenticated, role, handleLogout]);
 
   const navItemsByRole: Record<UserRole, NavItem[]> = useMemo(
     () => ({
       student: [
         { id: 'student-attendance', label: 'My Attendance', icon: ClipboardList },
+        { id: 'student-schedule', label: 'My Schedule', icon: CalendarDays },
         { id: 'student-profile', label: 'Profile & Security', icon: UserCircle },
         { id: 'student-report', label: 'Report an Issue', icon: MessageSquareWarning },
       ],
       admin: [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'schedule', label: 'Class Schedule', icon: CalendarDays },
+        { id: 'reports', label: 'Attendance Reports', icon: FileText },
+        { id: 'schedule-requests', label: 'Schedule Requests', icon: ClipboardList },
+        { id: 'invite-students', label: 'Invite Students', icon: Link2 },
+        { id: 'archive-requests', label: 'Archive Requests', icon: ClipboardList },
+      ],
+      program_head: [
+        { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+        { id: 'master-schedule', label: 'Master Schedule', icon: TableProperties },
+        { id: 'reports', label: 'Attendance Reports', icon: FileText },
+        { id: 'schedule-requests', label: 'Schedule Requests', icon: ClipboardList },
         { id: 'invite-students', label: 'Invite Students', icon: Link2 },
         { id: 'archive-requests', label: 'Archive Requests', icon: ClipboardList },
       ],
       super_admin: [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+        { id: 'master-schedule', label: 'Master Schedule', icon: TableProperties },
         { id: 'users', label: 'User Management', icon: Users },
         { id: 'reports', label: 'Reports & Analytics', icon: FileText },
+        { id: 'schedule-requests', label: 'Schedule Requests', icon: ClipboardList },
         { id: 'invite-students', label: 'Invite Students', icon: Link2 },
         { id: 'archive-requests', label: 'Archive Requests', icon: ClipboardList },
         { id: 'settings', label: 'System Configuration', icon: SettingsIcon },
@@ -197,6 +260,7 @@ export default function App() {
     () => ({
       student: [
         { id: 'student-attendance', path: '/student/attendance', element: <StudentAttendance /> },
+        { id: 'student-schedule', path: '/student/schedule', element: <StudentSchedule /> },
         { id: 'student-profile', path: '/student/profile', element: <StudentProfile /> },
         { id: 'student-report', path: '/student/report', element: <AppReports mode="submit" /> },
       ],
@@ -204,6 +268,7 @@ export default function App() {
         { id: 'overview', path: '/admin/overview', element: <Overview role="admin" /> },
         { id: 'schedule', path: '/admin/schedule', element: <Schedule role="admin" /> },
         { id: 'reports', path: '/admin/reports', element: <Reports role={role} /> },
+        { id: 'schedule-requests', path: '/admin/schedule-requests', element: <ScheduleChangeRequests /> },
         { id: 'invite-students', path: '/admin/invite-students', element: <InviteStudents /> },
         {
           id: 'archive-requests',
@@ -211,10 +276,24 @@ export default function App() {
           element: <ArchiveRequests canReview={false} />,
         },
       ],
+      program_head: [
+        { id: 'overview', path: '/program-head/overview', element: <Overview role="program_head" /> },
+        { id: 'master-schedule', path: '/program-head/master-schedule', element: <MasterSchedule /> },
+        { id: 'reports', path: '/program-head/reports', element: <Reports role={role} /> },
+        { id: 'schedule-requests', path: '/program-head/schedule-requests', element: <ScheduleChangeRequests /> },
+        { id: 'invite-students', path: '/program-head/invite-students', element: <InviteStudents /> },
+        {
+          id: 'archive-requests',
+          path: '/program-head/archive-requests',
+          element: <ArchiveRequests canReview={false} />,
+        },
+      ],
       super_admin: [
         { id: 'overview', path: '/super-admin/overview', element: <Overview role="super_admin" /> },
+        { id: 'master-schedule', path: '/super-admin/master-schedule', element: <MasterSchedule /> },
         { id: 'users', path: '/super-admin/users', element: <UserManagement /> },
         { id: 'reports', path: '/super-admin/reports', element: <Reports role={role} /> },
+        { id: 'schedule-requests', path: '/super-admin/schedule-requests', element: <ScheduleChangeRequests /> },
         { id: 'invite-students', path: '/super-admin/invite-students', element: <InviteStudents /> },
         {
           id: 'archive-requests',
@@ -283,7 +362,7 @@ export default function App() {
 
   if (isRegistrationRoute) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-100 flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-100 flex items-center justify-center p-4 relative">
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-gradient-to-br from-neutral-200/40 to-transparent blur-3xl"></div>
           <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-gradient-to-tr from-neutral-300/30 to-transparent blur-3xl"></div>
@@ -291,12 +370,14 @@ export default function App() {
           <div
             className="absolute inset-0 opacity-[0.02]"
             style={{
+              width: '24px',
+              height: '24px',
               backgroundImage: `radial-gradient(circle, #000 1px, transparent 1px)`,
-              backgroundSize: '50px 50px',
+              backgroundSize: '24px 24px',
             }}
           ></div>
         </div>
-        <div className="relative z-10 w-full max-w-md flex justify-center">
+        <div className="relative z-10 w-full max-w-4xl flex justify-center">
           <RegistrationErrorBoundary>
             <StudentRegistrationForm />
           </RegistrationErrorBoundary>
@@ -351,10 +432,12 @@ export default function App() {
             ))}
             <Route path="/student" element={<Navigate to={defaultPath} replace />} />
             <Route path="/admin" element={<Navigate to={defaultPath} replace />} />
+            <Route path="/program-head" element={<Navigate to={defaultPath} replace />} />
             <Route path="/super-admin" element={<Navigate to={defaultPath} replace />} />
             <Route path="/login/student" element={<Navigate to={defaultPath} replace />} />
             <Route path="/login/admin" element={<Navigate to={defaultPath} replace />} />
             <Route path="/login/super-admin" element={<Navigate to={defaultPath} replace />} />
+            <Route path="/login/program-head" element={<Navigate to={defaultPath} replace />} />
             <Route path="/" element={<Navigate to={defaultPath} replace />} />
             <Route 
               path="*" 
@@ -372,7 +455,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-100 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-100 flex items-center justify-center p-4 relative">
       {/* Minimalist Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         {/* Large Circle - Top Right */}
@@ -386,8 +469,10 @@ export default function App() {
         
         {/* Subtle Grid Pattern */}
         <div className="absolute inset-0 opacity-[0.02]" style={{
+          width: '24px',
+          height: '24px',
           backgroundImage: `radial-gradient(circle, #000 1px, transparent 1px)`,
-          backgroundSize: '50px 50px'
+          backgroundSize: '24px 24px'
         }}></div>
       </div>
 
@@ -439,44 +524,65 @@ export default function App() {
             <Route
               path="/login/admin"
               element={
-                <LoginForm
-                  forcedRole="admin"
-                  showRoleSelector={false}
-                  title="Admin Login"
-                  subtitle="Enter your credentials to continue"
-                  onLogin={(user) => {
-                    setRole(user.role);
-                    setUserEmail(user.email ?? '');
-                    setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
-                    setIsAuthenticated(true);
-                    const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
-                    navigate(nextDefault);
-                  }}
-                  onForgot={() => setAuthView('forgot')}
-                />
+                <StaffPortalAccessGate portal="admin">
+                  <LoginForm
+                    forcedRole="admin"
+                    showRoleSelector={false}
+                    onLogin={(user) => {
+                      setRole(user.role);
+                      setUserEmail(user.email ?? '');
+                      setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
+                      setIsAuthenticated(true);
+                      const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
+                      navigate(nextDefault);
+                    }}
+                    onForgot={() => setAuthView('forgot')}
+                  />
+                </StaffPortalAccessGate>
               }
             />
             <Route
               path="/login/super-admin"
               element={
-                <LoginForm
-                  forcedRole="super_admin"
-                  showRoleSelector={false}
-                  title="Super Admin Login"
-                  subtitle="Enter your credentials to continue"
-                  onLogin={(user) => {
-                    setRole(user.role);
-                    setUserEmail(user.email ?? '');
-                    setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
-                    setIsAuthenticated(true);
-                    const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
-                    navigate(nextDefault);
-                  }}
-                />
+                <StaffPortalAccessGate portal="super_admin">
+                  <LoginForm
+                    forcedRole="super_admin"
+                    showRoleSelector={false}
+                    onLogin={(user) => {
+                      setRole(user.role);
+                      setUserEmail(user.email ?? '');
+                      setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
+                      setIsAuthenticated(true);
+                      const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
+                      navigate(nextDefault);
+                    }}
+                  />
+                </StaffPortalAccessGate>
+              }
+            />
+            <Route
+              path="/login/program-head"
+              element={
+                <StaffPortalAccessGate portal="program_head">
+                  <LoginForm
+                    forcedRole="program_head"
+                    showRoleSelector={false}
+                    onLogin={(user) => {
+                      setRole(user.role);
+                      setUserEmail(user.email ?? '');
+                      setCurrentView(navItemsByRole[user.role][0]?.id ?? 'overview');
+                      setIsAuthenticated(true);
+                      const nextDefault = viewRoutesByRole[user.role][0]?.path ?? '/';
+                      navigate(nextDefault);
+                    }}
+                    onForgot={() => setAuthView('forgot')}
+                  />
+                </StaffPortalAccessGate>
               }
             />
             {/* Redirect protected paths to the right login when not authenticated */}
             <Route path="/super-admin/*" element={<Navigate to="/login/super-admin" replace />} />
+            <Route path="/program-head/*" element={<Navigate to="/login/program-head" replace />} />
             <Route path="/admin/*" element={<Navigate to="/login/admin" replace />} />
             <Route path="/student/*" element={<Navigate to="/login/student" replace />} />
             <Route path="*" element={<NotFound isAuthenticated={false} />} />

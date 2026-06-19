@@ -53,4 +53,15 @@ const requireSuperAdmin = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, requireRole, requireSuperAdmin };
+const requireProgramHeadOrSuper = (req, res, next) => {
+  const user = req.user;
+  if (!user?.roles) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  if (user.roles.includes('super_admin') || user.roles.includes('program_head')) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Access denied. Program Head or Super Admin only.' });
+};
+
+module.exports = { authenticate, requireRole, requireSuperAdmin, requireProgramHeadOrSuper };

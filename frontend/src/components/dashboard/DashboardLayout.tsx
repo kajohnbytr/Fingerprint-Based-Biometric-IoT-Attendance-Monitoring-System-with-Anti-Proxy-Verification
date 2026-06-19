@@ -1,4 +1,4 @@
-import React, { useState, type ComponentType } from 'react';
+import React, { useEffect, useState, type ComponentType } from 'react';
 import { 
   Shield, 
   LogOut, 
@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger 
 } from '../ui/dropdown-menu';
 import { roleLabels, panelLabels, type UserRole } from '../../types/rbac';
+import { API_BASE_URL } from '../../config';
 
 type NavItem = {
   id: string;
@@ -46,6 +47,39 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   isMaintenanceMode,
 }: DashboardLayoutProps) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [notifications, setNotifications] = useState<{ id: string; label: string; count: number; targetView?: string }[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchNotifications = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/notifications`, { credentials: 'include' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load notifications');
+        if (isMounted) {
+          const items = Array.isArray(data.items) ? data.items : [];
+          setNotifications(items);
+          const total = typeof data.totalCount === 'number'
+            ? data.totalCount
+            : items.reduce((sum: number, item: any) => sum + (item.count || 0), 0);
+          setUnreadCount(total);
+        }
+      } catch {
+        if (isMounted) {
+          setNotifications([]);
+          setUnreadCount(0);
+        }
+      }
+    };
+    fetchNotifications();
+    const id = setInterval(fetchNotifications, 60000);
+    return () => {
+      isMounted = false;
+      clearInterval(id);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-neutral-50 flex">
@@ -170,10 +204,53 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="relative p-2 text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                className="relative p-2 text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
+                onClick={() => setShowNotifications((prev) => !prev)}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-2 right-2 min-w-[0.75rem] h-3 px-0.5 rounded-full bg-red-500 text-[10px] leading-3 text-white flex items-center justify-center border-2 border-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-64 bg-white border border-neutral-200 rounded-lg shadow-lg z-30">
+                  <div className="px-3 py-2 border-b border-neutral-100 text-xs font-medium text-neutral-500">
+                    Notifications
+                  </div>
+                  <div className="max-h-64 overflow-y-auto text-sm">
+                    {notifications.length === 0 ? (
+                      <div className="px-3 py-3 text-neutral-500 text-xs">No notifications.</div>
+                    ) : (
+                      notifications.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-neutral-50 flex items-center justify-between gap-2"
+                          onClick={() => {
+                            if (item.targetView) {
+                              onNavigate(item.targetView);
+                            }
+                            setShowNotifications(false);
+                          }}
+                        >
+                          <span className="text-xs text-neutral-700">{item.label}</span>
+                          {item.count > 0 && (
+                            <span className="ml-2 inline-flex items-center rounded-full bg-neutral-900 text-white text-[10px] px-2 py-0.5">
+                              {item.count}
+                            </span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="h-8 w-px bg-neutral-200 mx-1"></div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Shield, Clock, Search } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
